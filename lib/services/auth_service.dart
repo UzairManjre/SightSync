@@ -1,29 +1,53 @@
-import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  // Mock user for now
-  UserModel? _currentUser;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
+  User? get currentUser => _supabase.auth.currentUser;
+
+  // Login
   Future<UserModel?> login(String email, String password) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (email == "test@example.com" && password == "password") {
-      _currentUser = UserModel(
-        userId: 1,
+    try {
+      final AuthResponse res = await _supabase.auth.signInWithPassword(
         email: email,
-        passwordHash: "hashed_password",
-        createdAt: DateTime.now(),
+        password: password,
       );
-      return _currentUser;
+      if (res.user != null) return _mapSupabaseUser(res.user!);
+      return null;
+    } catch (e) {
+      print("Login Error: $e");
+      rethrow;
     }
-    return null;
+  }
+
+  // Sign Up
+  Future<UserModel?> signUp(String email, String password, String fullName) async {
+    try {
+      final AuthResponse res = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {'full_name': fullName}, // Triggers your DB function
+      );
+      if (res.user != null) return _mapSupabaseUser(res.user!);
+      return null;
+    } catch (e) {
+      print("Signup Error: $e");
+      rethrow;
+    }
   }
 
   Future<void> logout() async {
-    _currentUser = null;
+    await _supabase.auth.signOut();
   }
 
-  UserModel? get currentUser => _currentUser;
+  // Correct Mapping using String ID
+  UserModel _mapSupabaseUser(User user) {
+    return UserModel(
+      userId: user.id, // Now a String, matching the model
+      email: user.email!,
+      fullName: user.userMetadata?['full_name'],
+      createdAt: DateTime.parse(user.createdAt),
+    );
+  }
 }

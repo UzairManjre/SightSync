@@ -10,100 +10,160 @@ class SplashScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
       body: Container(
-        decoration: BoxDecoration(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              AppColors.primaryDark,
-              AppColors.primaryPurple.withOpacity(0.4),
-              AppColors.primaryBlue.withOpacity(0.3),
+              Color(0xFF4E73DF), // Brighter Blue at top
+              AppColors.backgroundDark, // Fade to deep black
             ],
+            stops: [0.0, 0.6],
           ),
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(40.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Spacer(),
+                const SizedBox(height: 40),
+
+                // --- HERO SECTION ---
                 // Logo
                 Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.primaryPurple,
-                        AppColors.primaryBlue,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryPurple.withOpacity(0.5),
-                        blurRadius: 40,
-                        spreadRadius: 10,
-                      ),
-                    ],
                   ),
                   child: const Icon(
-                    Icons.visibility,
-                    size: 80,
-                    color: Colors.white,
+                    Icons.visibility_outlined,
+                    size: 40,
+                    color: AppColors.primaryBlue,
                   ),
                 ),
-                const SizedBox(height: 48),
-                // App Name
+
+                const SizedBox(height: 40),
+
+                // Title
+                const Text(
+                  "Welcome to",
+                  style: TextStyle(
+                    fontSize: 42,
+                    fontWeight: FontWeight.w300,
+                    color: Colors.white,
+                    height: 1.2,
+                  ),
+                ),
                 const Text(
                   "SightSync",
                   style: TextStyle(
-                    fontSize: 48,
+                    fontSize: 42,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                    letterSpacing: 1.5,
+                    color: Colors.white,
+                    height: 1.0,
                   ),
                 ),
-                const SizedBox(height: 16),
-                // Tagline
-                Text(
-                  "See Beyond Limits",
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                const Spacer(),
-                // Get Started Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pushReplacement(
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      backgroundColor: AppColors.primaryPurple,
-                    ),
-                    child: const Text(
-                      "Get Started",
+
+                const SizedBox(height: 60),
+
+                // --- ACTION SECTION ---
+                // "Let's Sync In" Text
+                Row(
+                  children: [
+                    const Text(
+                      "Let's Sync In",
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white70,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward,
+                      color: Colors.white70,
+                      size: 18,
+                    )
+                  ],
                 ),
+
                 const SizedBox(height: 20),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAuthButton(
+                        context,
+                        label: "Login",
+                        onPressed: () {
+                          // Open LoginScreen in Login mode
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(isLogin: true),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(width: 16),
+
+                    Expanded(
+                      child: _buildAuthButton(
+                        context,
+                        label: "Create Account",
+                        onPressed: () {
+                          // Open LoginScreen in Signup mode (This was the fix)
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(isLogin: false),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAuthButton(BuildContext context, {required String label, required VoidCallback onPressed}) {
+    return Container(
+      height: 50,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(25),
+        color: const Color(0xFF0A1A30),
+        border: Border.all(
+          color: AppColors.primaryBlue.withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(25),
+          ),
+          padding: EdgeInsets.zero,
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 15,
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),
