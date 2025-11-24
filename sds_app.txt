@@ -1,0 +1,367 @@
+Master Technical Specification: SightSync Ecosystem
+
+Version: 2.0
+Date: 2025-11-23
+Scope: Hardware, Firmware, Companion App, and Cloud Infrastructure.
+
+1. System Overview & Hardware Definition
+
+Context for the Developer: The software controls a pair of IoT Smart Glasses designed for the visually impaired. The app does not just "display data"; it acts as the primary configuration and gateway interface for the hardware.
+
+1.1 Hardware Specifications (The "Thing" we are controlling)
+
+Visual Sensors:
+
+Primary Camera: Standard RGB sensor for daylight object detection.
+
+Night Vision Module: NoIR (No Infrared Filter) Camera + 940nm IR LED Illuminator array.
+
+Logic: Auto-switch to NoIR feed when ambient light < 10 Lux (detected by onboard Light Sensor).
+
+Audio I/O:
+
+Output: Bone Conduction Speakers (requires high-volume/clear TTS generation).
+
+Input: Multi-microphone array for beamforming voice commands.
+
+Input Interface:
+
+Action Button: Physical tactile button on the temple.
+
+Single Press: Trigger mapped action (Default: Describe Scene).
+
+Double Press: Trigger mapped action (Default: OCR/Read Text).
+
+Long Press (3s): System Power / Cancel Listening.
+
+Connectivity:
+
+Bluetooth 5.0 (BLE): Used for command/control, status updates, and battery telemetry.
+
+Wi-Fi (2.4GHz): Used for high-bandwidth upload (images/video) to Cloud Storage.
+
+Safety Sensors:
+
+Thermal Sensor: Monitors IR LED temp. Hard cutoff at 45°C to prevent burns.
+
+2. Software Architecture
+
+2.1 The Ecosystem
+
+Smart Glasses (Firmware): Runs Python/C++. Handles sensors, basic logic (Night mode switch), and BLE advertising.
+
+Companion App (Mobile): Flutter/React Native. Handles auth, configuration, BLE handshake, and displaying visual results for sighted assistants.
+
+Cloud Backend: REST API + Database. Handles user accounts, media storage, and heavy AI processing (OCR/Object Detection) if local processing is insufficient.
+
+2.2 Database Schema (V2) - Single Source of Truth
+
+The app must replicate this schema for local caching (SQLite) and sync with the remote DB (PostgreSQL/MySQL).
+
+Table: Users
+
+Column
+
+Type
+
+Notes
+
+user_id
+
+INT (PK)
+
+Unique ID
+
+email
+
+VARCHAR(100)
+
+Auth login
+
+password_hash
+
+VARCHAR(255)
+
+Secure hash
+
+created_at
+
+DATETIME
+
+
+
+Table: Settings (Crucial for App Sync)
+
+Column
+
+Type
+
+Notes
+
+setting_id
+
+INT (PK)
+
+
+
+user_id
+
+INT (FK)
+
+One-to-One with User
+
+brightness
+
+INT
+
+0-100 scale (IR LED intensity)
+
+volume
+
+INT
+
+0-100 scale (Bone conduction vol)
+
+voice_control
+
+BOOLEAN
+
+Master toggle
+
+single_press_map
+
+ENUM
+
+'scene_desc', 'ocr', 'nav', 'voice'
+
+double_press_map
+
+ENUM
+
+'scene_desc', 'ocr', 'nav', 'voice'
+
+wifi_ssid
+
+VARCHAR
+
+Stored for re-connection
+
+Table: MediaFiles
+
+Column
+
+Type
+
+Notes
+
+media_id
+
+INT (PK)
+
+
+
+user_id
+
+INT (FK)
+
+
+
+file_type
+
+ENUM
+
+'photo', 'video'
+
+storage_path
+
+VARCHAR
+
+S3/Firebase URL
+
+is_synced
+
+BOOLEAN
+
+True if uploaded successfully
+
+3. Connectivity Protocol (BLE "Handshake")
+
+Developer Note: The app interacts with the glasses via Bluetooth Low Energy. Use these definitions for the flutter_blue_plus or react-native-ble-plx implementation.
+
+Service UUID: 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+
+3.1 Characteristics
+
+A. Command Characteristic (Write Only)
+
+UUID: 6E400002-...
+
+Usage: Phone sends config changes to Glasses.
+
+Payload Structure (JSON over Byte Stream):
+
+// Example: Changing the double-press action
+{
+  "cmd": "set_config",
+  "key": "double_press_map",
+  "value": "ocr"
+}
+
+
+// Example: Setting Wi-Fi
+{
+  "cmd": "connect_wifi",
+  "ssid": "HomeNetwork",
+  "pass": "Secret123"
+}
+
+
+B. Event Characteristic (Notify Only)
+
+UUID: 6E400003-...
+
+Usage: Glasses alert Phone of physical events.
+
+Hex Codes:
+
+0x01: Single Button Press
+
+0x02: Double Button Press
+
+0x03: Long Press Start
+
+0x04: Long Press End
+
+0x10: Low Battery Warning (<15%)
+
+0x11: Thermal Warning (IR LEDs > 40°C)
+
+0x20: Night Mode Activated (Lux < 10)
+
+0x21: Night Mode Deactivated
+
+C. Data Stream Characteristic (Read/Notify)
+
+UUID: 6E400004-...
+
+Usage: Sending text results (OCR output) to the phone for display logs.
+
+
+
+4. UI Implementation & Logic Guide
+
+
+
+
+
+4.1 Onboarding & Pairing (Screens 4-6)
+
+
+
+Logic:
+
+Scan: Filter for devices broadcasting Service UUID 6E400001....
+
+Security: When user selects device, initiate bonding.
+
+Tutorial (Page 6): The "Get to Know Your Button" page is interactive.
+
+Step: App subscribes to Event Characteristic.
+
+Prompt: "Press button once."
+
+Wait: Until 0x01 is received.
+
+Feedback: Vibrate phone + TTS "Good job."
+
+
+
+4.2 Dashboard & Status (Page 7)
+
+
+
+Battery: Read BLE Battery Service (Standard UUID 0x180F) every 60s.
+
+Connection Monitor: If BLE connection drops:
+
+Update UI to "Disconnected" (Red).
+
+Send local notification: "SightSync disconnected."
+
+Trigger auto-reconnect loop (attempts every 5s for 1 minute).
+
+
+
+4.3 Settings & Mapping (Page 8, 11)
+
+
+
+Mapping Logic:
+
+UI: Dropdown menu (Scene Description, OCR, etc.).
+
+Action: On change, write JSON to Command Characteristic.
+
+Fail-safe: If BLE Write fails, revert UI to previous state and show error toast.
+
+Audio Control:
+
+Slider changes on Phone UI send immediate (debounced) volume commands to Glasses to adjust Bone Conduction driver gain.
+
+
+
+5. Testing & Validation Protocols
+
+
+
+The app code must handle the edge cases defined in our testing sprints.
+
+
+
+5.1 Night Vision & Thermal Safety
+
+
+
+App Responsibility: Even though the firmware handles safety, the App must listen for 0x11 (Thermal Warning).
+
+Logic: If 0x11 received -> Show Critical Alert Dialog on Phone -> "Glasses Overheating. Night Vision disabled."
+
+
+
+5.2 Conversation & Latency
+
+
+
+Requirement: Total "Press-to-Listening" latency must be < 500ms.
+
+App Logic: Do NOT wait for cloud confirmation to give UI feedback.
+
+User Press -> BLE Notify -> App UI Update (Listening State) immediately.
+
+
+
+5.3 Accessibility Standards
+
+
+
+VoiceOver/TalkBack: Every UI element must have a semanticLabel.
+
+High Contrast: Ensure text/bg ratio > 4.5:1.
+
+Touch Targets: Minimum 48x48dp for all interactive elements.
+
+
+
+6. Development Roadmap for AI Assistant
+
+
+
+Scaffold: Create Flutter/RN project with BLE and HTTP dependencies.
+
+Data Layer: Implement User and Settings models matching the DB Schema.
+
+Service Layer: Create BleService class to handle the UUIDs and Hex codes defined in Section 3.
+
+UI Construction: Build screens 1-13 matching the PDF design, wrapping everything in Semantics widgets.
+
+Integration: Connect the Settings page UI to the BleService write methods.
