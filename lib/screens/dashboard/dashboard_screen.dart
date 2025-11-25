@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/ble_service.dart';
 import '../../utils/theme.dart';
 import '../settings/settings_screen.dart';
+// Import the new reusable widget
+import '../../widgets/floating_nav_bar.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -12,288 +15,264 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  String _userName = "User";
+  int _batteryLevel = 0;
+
+  // Dashboard is index 0
+  final int _currentIndex = 0;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BleService>().eventStream.listen((event) {
-        if (event == "Thermal Warning" && mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              backgroundColor: AppColors.cardBackground,
-              title: const Row(
-                children: [
-                  Icon(Icons.warning, color: AppColors.error),
-                  SizedBox(width: 8),
-                  Text("Critical Warning"),
-                ],
-              ),
-              content: const Text(
-                "Glasses are overheating! Night Vision has been disabled to prevent injury.",
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("OK"),
-                ),
-              ],
-            ),
-          );
-        }
+    _fetchUserProfile();
+    _setupBleListeners();
+  }
+
+  void _fetchUserProfile() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      setState(() {
+        _userName = user.userMetadata?['full_name']?.split(' ').first ?? "User";
       });
+    }
+  }
+
+  void _setupBleListeners() {
+    final bleService = context.read<BleService>();
+
+    bleService.eventStream.listen((event) {
+      if (event == "Thermal Warning" && mounted) {
+        // Thermal Alert Logic
+      }
     });
+
+    bleService.batteryStream.listen((level) {
+      if (mounted) setState(() => _batteryLevel = level);
+    });
+  }
+
+  void _handleNavTap(int index) {
+    if (index == _currentIndex) return; // Already on this page
+
+    // Navigation Logic
+    switch (index) {
+      case 0:
+        // Already on Home
+        break;
+      case 1:
+        // Navigate to Controls
+        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ControlsScreen()));
+        break;
+      case 2:
+        // Navigate to Guide
+        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const GuideScreen()));
+        break;
+      case 3:
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final bleService = context.watch<BleService>();
-    bool isConnected = bleService.connectedDevice != null;
+    final isConnected = bleService.connectedDevice != null;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "SightSync",
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                      );
-                    },
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppColors.cardBackground,
-                      child: const Icon(
-                        Icons.person,
-                        color: AppColors.primaryPurple,
-                        size: 24,
-                      ),
-                    ),
-                  ),
+      body: Stack(
+        children: [
+          // --- LAYER 1: BACKGROUND GRADIENT ---
+          Container(
+            width: double.infinity,
+            height: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF050510), // Deep dark at top
+                  Color(0xFF0A1A35), // Mid blue
+                  Color(0xFF4E73DF), // Lighter blue at bottom (Horizon effect)
                 ],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
-            
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    
-                    // Device Status Card
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppColors.primaryPurple,
-                            AppColors.primaryBlue,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryPurple.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          // Glasses Icon
-                          Container(
-                            padding: const EdgeInsets.all(20),
+          ),
+
+          // --- LAYER 2: SCROLLABLE CONTENT ---
+          SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 20),
+
+                        // Wave Icon
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
                               shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white24),
+                              color: Colors.white.withOpacity(0.05),
                             ),
-                            child: const Icon(
-                              Icons.remove_red_eye,
-                              size: 60,
-                              color: Colors.white,
-                            ),
+                            child: const Icon(Icons.graphic_eq, color: Colors.white, size: 24),
                           ),
-                          const SizedBox(height: 24),
-                          
-                          // Status Text
-                          Text(
-                            isConnected ? "Connected" : "Disconnected",
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            isConnected ? "SightSync Smart Glasses" : "No device connected",
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white.withOpacity(0.8),
-                            ),
-                          ),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Battery and Signal
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Header
+                        const Text("Device", style: TextStyle(color: Colors.white54, fontSize: 16)),
+                        const SizedBox(height: 4),
+                        Text(
+                          "$_userName's SightSync",
+                          style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w400),
+                        ),
+
+                        const SizedBox(height: 60),
+
+                        // Cards
+                        _buildStatusCard(
+                          child: Row(
                             children: [
-                              _buildStatusItem(
-                                Icons.battery_charging_full,
-                                "Battery",
-                                isConnected ? "85%" : "--",
-                              ),
-                              Container(
-                                height: 40,
-                                width: 1,
-                                color: Colors.white.withOpacity(0.3),
-                              ),
-                              _buildStatusItem(
-                                Icons.bluetooth_connected,
-                                "Connection",
-                                isConnected ? "Strong" : "None",
+                              _buildStatusDot(isConnected),
+                              const SizedBox(width: 16),
+                              const Text("Connection Status", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                              const Spacer(),
+                              Text(
+                                isConnected ? "Connected" : "Disconnected",
+                                style: const TextStyle(color: Colors.white, fontSize: 16),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Features Title
-                    const Text(
-                      "Features",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Feature Cards Grid
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 1.0,
-                      children: [
-                        _buildFeatureCard(
-                          "Scene\nDescription",
-                          Icons.landscape,
-                          AppColors.primaryPurple,
                         ),
-                        _buildFeatureCard(
-                          "Text\nReader",
-                          Icons.text_fields,
-                          AppColors.primaryBlue,
+                        const SizedBox(height: 20),
+
+                        // Battery
+                        _buildStatusCard(
+                          child: Row(
+                            children: [
+                              const Text("Battery", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                              const SizedBox(width: 12),
+                              const Text("-", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                              const SizedBox(width: 12),
+                              Text(
+                                isConnected ? "$_batteryLevel%" : "85%", // Mock 85% if disconnected for UI check
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              SizedBox(
+                                width: 100,
+                                height: 12,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: LinearProgressIndicator(
+                                    value: 0.85,
+                                    backgroundColor: Colors.white10,
+                                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.success),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        _buildFeatureCard(
-                          "Object\nDetection",
-                          Icons.search,
-                          AppColors.accentPink,
-                        ),
-                        _buildFeatureCard(
-                          "Navigation",
-                          Icons.navigation,
-                          const Color(0xFF4CAF50),
+                        const SizedBox(height: 20),
+
+                        // Sync
+                        _buildStatusCard(
+                          child: Row(
+                            children: [
+                              const Text("Last Synced", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                              const SizedBox(width: 12),
+                              const Text("-", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                              const SizedBox(width: 12),
+                              const Text("5 mins ago", style: TextStyle(color: Colors.white, fontSize: 16)),
+                              const Spacer(),
+                              const Icon(Icons.refresh, color: Colors.white, size: 20),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
+          ),
 
-  Widget _buildStatusItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withOpacity(0.8),
+          // --- LAYER 3: PAGE INDICATOR ---
+          Positioned(
+            bottom: 110, // Positioned just above the floating nav bar
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildPageIndicator(true),
+                _buildPageIndicator(false),
+                _buildPageIndicator(false),
+                _buildPageIndicator(false),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildFeatureCard(String title, IconData icon, Color color) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              size: 36,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          // --- LAYER 4: REUSABLE FLOATING NAV BAR ---
+          FloatingNavBar(
+            currentIndex: _currentIndex,
+            onTap: _handleNavTap,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStatusCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A182E).withOpacity(0.6),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: AppColors.primaryBlue.withOpacity(0.15),
+          width: 1,
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildStatusDot(bool active) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: active ? AppColors.success : AppColors.error,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: (active ? AppColors.success : AppColors.error).withOpacity(0.6),
+            blurRadius: 6,
+          )
+        ]
+      ),
+    );
+  }
+
+  Widget _buildPageIndicator(bool isActive) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      width: 20,
+      height: 4,
+      decoration: BoxDecoration(
+        color: isActive ? Colors.white : Colors.white24,
+        borderRadius: BorderRadius.circular(2),
       ),
     );
   }

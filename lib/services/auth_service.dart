@@ -41,6 +41,16 @@ class AuthService {
     await _supabase.auth.signOut();
   }
 
+  // Resend verification email
+  Future<void> resendVerificationEmail(String email) async {
+    try {
+      await _supabase.auth.resend(type: OtpType.signup, email: email);
+    } catch (e) {
+      print("Resend Verification Error: $e");
+      rethrow;
+    }
+  }
+
   // Correct Mapping using String ID
   UserModel _mapSupabaseUser(User user) {
     return UserModel(

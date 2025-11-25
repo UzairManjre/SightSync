@@ -8,32 +8,41 @@ class BleService {
   factory BleService() => _instance;
   BleService._internal();
 
-  // UUIDs from spec
+  // Custom UUIDs (SightSync Specific)
   final String serviceUuid = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
   final String commandCharUuid = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
   final String eventCharUuid = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-  final String dataStreamCharUuid = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
+  
+  // Standard BLE Battery Service UUIDs
+  final String batteryServiceUuid = "180F";
+  final String batteryLevelCharUuid = "2A19";
 
   BluetoothDevice? connectedDevice;
   BluetoothCharacteristic? commandChar;
   BluetoothCharacteristic? eventChar;
-  BluetoothCharacteristic? dataStreamChar;
+  BluetoothCharacteristic? batteryChar; // New
 
+  // Stream for Events (Button presses, Thermal warnings)
   final StreamController<String> _eventController = StreamController<String>.broadcast();
   Stream<String> get eventStream => _eventController.stream;
 
+  // Stream for Battery Level (New)
+  final StreamController<int> _batteryController = StreamController<int>.broadcast();
+  Stream<int> get batteryStream => _batteryController.stream;
+
+  // Initial Permissions Check
   Future<void> init() async {
-    // Check permissions
-    if (await Permission.location.request().isGranted &&
-        await Permission.bluetoothScan.request().isGranted &&
-        await Permission.bluetoothConnect.request().isGranted) {
-      // Permissions granted
-    }
+    await [
+      Permission.location,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+    ].request();
   }
 
   Future<void> startScan() async {
+    // Scanning for both our Custom Service AND Battery Service devices
     await FlutterBluePlus.startScan(
-      withServices: [Guid(serviceUuid)],
+      withServices: [Guid(serviceUuid)], // Filter by our glasses
       timeout: const Duration(seconds: 15),
     );
   }
@@ -56,14 +65,18 @@ class BleService {
       connectedDevice = null;
       commandChar = null;
       eventChar = null;
-      dataStreamChar = null;
+      batteryChar = null;
     }
   }
 
   Future<void> _discoverServices(BluetoothDevice device) async {
     List<BluetoothService> services = await device.discoverServices();
+    
     for (var service in services) {
-      if (service.uuid.toString().toUpperCase() == serviceUuid) {
+      String currentUuid = service.uuid.toString().toUpperCase();
+
+      // 1. Setup Custom Service
+      if (currentUuid == serviceUuid) {
         for (var characteristic in service.characteristics) {
           String uuid = characteristic.uuid.toString().toUpperCase();
           if (uuid == commandCharUuid) {
@@ -71,21 +84,47 @@ class BleService {
           } else if (uuid == eventCharUuid) {
             eventChar = characteristic;
             await _setupNotifications(eventChar!);
-          } else if (uuid == dataStreamCharUuid) {
-            dataStreamChar = characteristic;
+          }
+        }
+      }
+      
+      // 2. Setup Battery Service (Standard 0x180F)
+      // Note: FlutterBluePlus might return 128-bit UUID, so we check 'contains' or exact match
+      if (currentUuid.contains(batteryServiceUuid)) {
+        for (var characteristic in service.characteristics) {
+          if (characteristic.uuid.toString().toUpperCase().contains(batteryLevelCharUuid)) {
+            batteryChar = characteristic;
+            await _setupBatteryNotifications(batteryChar!);
           }
         }
       }
     }
   }
 
+  // Handle Custom Events (Buttons, Thermal)
   Future<void> _setupNotifications(BluetoothCharacteristic characteristic) async {
     await characteristic.setNotifyValue(true);
     characteristic.lastValueStream.listen((value) {
-      // Handle hex codes
       if (value.isNotEmpty) {
         int code = value[0];
         _handleEventCode(code);
+      }
+    });
+  }
+
+  // Handle Battery Updates
+  Future<void> _setupBatteryNotifications(BluetoothCharacteristic characteristic) async {
+    await characteristic.setNotifyValue(true);
+    // Read initial value
+    List<int> initialVal = await characteristic.read();
+    if (initialVal.isNotEmpty) {
+      _batteryController.add(initialVal[0]);
+    }
+    
+    // Listen for changes
+    characteristic.lastValueStream.listen((value) {
+      if (value.isNotEmpty) {
+        _batteryController.add(value[0]); // The first byte is the percentage (0-100)
       }
     });
   }
@@ -110,8 +149,6 @@ class BleService {
     if (commandChar != null) {
       String jsonString = jsonEncode(command);
       await commandChar!.write(utf8.encode(jsonString));
-    } else {
-      throw Exception("Command Characteristic not found or device not connected");
     }
   }
 }

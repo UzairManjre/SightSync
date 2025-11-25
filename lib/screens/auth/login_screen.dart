@@ -65,11 +65,45 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // Error
+        String message = e.toString();
+        SnackBarAction? action;
+
+        // Check for Supabase email verification error
+        if (e.toString().contains('Email not confirmed')) {
+          message = 'Please verify your email before logging in.';
+          action = SnackBarAction(
+            label: 'Resend',
+            onPressed: () async {
+              try {
+                await authService.resendVerificationEmail(email);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Verification email sent!'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error resending email: ${e.toString()}'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              }
+            },
+          );
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(message),
             backgroundColor: AppColors.error,
+            action: action,
+            duration: const Duration(seconds: 6), // Give user time to act
           ),
         );
       }
