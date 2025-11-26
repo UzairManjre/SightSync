@@ -1,9 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/theme.dart';
 import 'login_screen.dart';
+import '../dashboard/dashboard_screen.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    // Give the splash screen a moment to show (optional, but smoother)
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    if (!mounted) return;
+
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      // User is already logged in, go to Dashboard
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +146,7 @@ class SplashScreen extends StatelessWidget {
                         context,
                         label: "Create Account",
                         onPressed: () {
-                          // Open LoginScreen in Signup mode (This was the fix)
+                          // Open LoginScreen in Signup mode
                           Navigator.of(context).pushReplacement(
                             MaterialPageRoute(
                               builder: (_) => const LoginScreen(isLogin: false),

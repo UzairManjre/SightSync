@@ -42,7 +42,7 @@ class BleService {
   Future<void> startScan() async {
     // Scanning for both our Custom Service AND Battery Service devices
     await FlutterBluePlus.startScan(
-      withServices: [Guid(serviceUuid)], // Filter by our glasses
+      // withServices: [Guid(serviceUuid)], // Filter removed for broader compatibility
       timeout: const Duration(seconds: 15),
     );
   }

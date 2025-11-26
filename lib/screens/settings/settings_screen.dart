@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/ble_service.dart';
+import '../../services/auth_service.dart';
+import '../auth/splash_screen.dart';
 import '../../utils/theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -294,6 +296,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () async {
                       await bleService.disconnect();
                       if (context.mounted) Navigator.pop(context);
+                    },
+                  ),
+                  
+                  const SizedBox(height: 12),
+
+                  _buildMenuCard(
+                    icon: Icons.exit_to_app,
+                    title: "Logout",
+                    isDestructive: true,
+                    onTap: () async {
+                      final authService = context.read<AuthService>();
+                      await authService.logout();
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SplashScreen()),
+                          (route) => false,
+                        );
+                      }
                     },
                   ),
                   

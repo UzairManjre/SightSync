@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/user_model.dart';
@@ -11,15 +12,15 @@ class DatabaseHelper {
 
   DatabaseHelper._internal();
 
-  Future<Database> get database async {
+  Future<Database?> get database async {
+    if (kIsWeb) return null; // Web doesn't support sqflite out of the box
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
   Future<Database> _initDatabase() async {
-    // We change the filename to force a fresh DB creation with new schema
-    String path = join(await getDatabasesPath(), 'sightsync_v3.db');
+    String path = join(await getDatabasesPath(), 'sightsync_v4.db'); 
     return await openDatabase(
       path,
       version: 1,
@@ -54,39 +55,36 @@ class DatabaseHelper {
     ''');
   }
 
-  // User Methods
+  // --- User Methods ---
   Future<int> insertUser(UserModel user) async {
-    Database db = await database;
-    return await db.insert('Users', user.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    if (kIsWeb) return 0;
+    Database? db = await database;
+    return await db!.insert('Users', user.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<UserModel?> getUser(String id) async {
-    Database db = await database;
-    List<Map<String, dynamic>> maps = await db.query('Users', where: 'user_id = ?', whereArgs: [id]);
-    if (maps.isNotEmpty) {
-      return UserModel.fromMap(maps.first);
-    }
+    if (kIsWeb) return null;
+    Database? db = await database;
+    List<Map<String, dynamic>> maps = await db!.query('Users', where: 'user_id = ?', whereArgs: [id]);
+    if (maps.isNotEmpty) return UserModel.fromMap(maps.first);
     return null;
   }
 
-  // Settings Methods
+  // --- Settings Methods ---
   Future<int> insertSettings(SettingsModel settings) async {
-    Database db = await database;
-    // Convert boolean to int for SQLite
-    Map<String, dynamic> map = settings.toMap();
-    map['voice_control_enabled'] = settings.voiceControl ? 1 : 0;
-
-    return await db.insert('Settings', map, conflictAlgorithm: ConflictAlgorithm.replace);
+    if (kIsWeb) return 0;
+    Database? db = await database;
+    Map<String, dynamic> map = settings.toLocalJson();
+    // Ensure boolean conversion happens in toLocalJson or here if needed
+    return await db!.insert('Settings', map, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<SettingsModel?> getSettings(String userId) async {
-    Database db = await database;
-    List<Map<String, dynamic>> maps = await db.query('Settings', where: 'user_id = ?', whereArgs: [userId]);
+    if (kIsWeb) return null;
+    Database? db = await database;
+    List<Map<String, dynamic>> maps = await db!.query('Settings', where: 'user_id = ?', whereArgs: [userId]);
     if (maps.isNotEmpty) {
-      // Convert SQLite int back to boolean
-      Map<String, dynamic> map = Map<String, dynamic>.from(maps.first);
-      map['voice_control_enabled'] = (map['voice_control_enabled'] == 1);
-      return SettingsModel.fromMap(map);
+      return SettingsModel.fromMap(maps.first);
     }
     return null;
   }

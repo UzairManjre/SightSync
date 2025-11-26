@@ -1,30 +1,51 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/settings_model.dart';
+import 'database_helper.dart';
 
 class SettingsService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final DatabaseHelper _localDb = DatabaseHelper();
 
-  // Fetch settings for the current user
+  // Fetch settings (Cloud + Local Merge)
   Future<SettingsModel?> fetchSettings() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return null;
 
+    SettingsModel? cloudSettings;
+    SettingsModel? localSettings;
+
+    // 1. Try Local Load
     try {
-      // We use .single() because the DB ensures 1 row per user
+      localSettings = await _localDb.getSettings(userId);
+    } catch (e) {
+      print("Local DB skipped (Web or Error)");
+    }
+
+    try {
+      // 2. Try Cloud Load
       final data = await _supabase
           .from('settings')
           .select()
           .eq('user_id', userId)
           .single();
+      cloudSettings = SettingsModel.fromMap(data);
+      
+      // 3. Merge & Save
+      final mergedSettings = cloudSettings.copyWith(
+        lastSyncedAt: localSettings?.lastSyncedAt 
+      );
+      
+      // Safely attempt local save
+      await _localDb.insertSettings(mergedSettings);
+      return mergedSettings;
 
-      return SettingsModel.fromMap(data);
     } catch (e) {
-      print("Error fetching settings: $e");
-      return null;
+      print("Cloud fetch failed: $e");
+      return localSettings;
     }
   }
 
-  // Update a specific setting (e.g., volume slider changed)
+  // Update specific setting
   Future<void> updateSetting(String key, dynamic value) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
@@ -32,25 +53,33 @@ class SettingsService {
     try {
       await _supabase
           .from('settings')
-          .update({key: value, 'last_synced_at': DateTime.now().toIso8601String()})
+          .update({key: value})
           .eq('user_id', userId);
+          
+      // Update Local Timestamp
+      final local = await _localDb.getSettings(userId);
+      // If local is null (Web), create a temporary object just to proceed logic if needed
+      // or just skip.
+      if (local != null) {
+        await _localDb.insertSettings(
+          local.copyWith(lastSyncedAt: DateTime.now())
+        );
+      }
     } catch (e) {
       print("Error updating setting $key: $e");
+      rethrow;
     }
   }
-
-  // Update all settings at once
-  Future<void> updateAll(SettingsModel settings) async {
+  
+  Future<void> performManualSync() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    try {
-      await _supabase
-          .from('settings')
-          .update(settings.toMap())
-          .eq('user_id', userId);
-    } catch (e) {
-      print("Error syncing settings: $e");
+    final local = await _localDb.getSettings(userId);
+    if (local != null) {
+      await _localDb.insertSettings(
+        local.copyWith(lastSyncedAt: DateTime.now())
+      );
     }
   }
 }
