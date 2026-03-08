@@ -21,18 +21,15 @@ class SettingsModel {
     this.lastSyncedAt,
   });
 
-  // --- 1. For SUPABASE (Cloud) ---
-  // EXCLUDES 'last_synced_at' so we don't mess up the DB
-  Map<String, dynamic> toSupabaseJson() {
+  // --- 1. For FIRESTORE (Cloud) ---
+  Map<String, dynamic> toFirestoreJson() {
     return {
-      'user_id': userId,
       'brightness': brightness,
       'volume': volume,
-      'voice_control_enabled': voiceControl,
-      'single_press_action': singlePressAction,
-      'double_press_action': doublePressAction,
-      'wifi_ssid': wifiSsid,
-      // NO last_synced_at here!
+      'voiceControl': voiceControl,
+      'singlePressAction': singlePressAction,
+      'doublePressAction': doublePressAction,
+      'wifiSsid': wifiSsid,
     };
   }
 
@@ -58,11 +55,15 @@ class SettingsModel {
       userId: map['user_id'] ?? '',
       brightness: map['brightness'] ?? 50,
       volume: map['volume'] ?? 50,
-      // Handle both Boolean (Supabase) and Int (SQLite) logic
-      voiceControl: map['voice_control_enabled'] == true || map['voice_control_enabled'] == 1,
-      singlePressAction: map['single_press_action'] ?? 'describe_scene',
-      doublePressAction: map['double_press_action'] ?? 'read_text',
-      wifiSsid: map['wifi_ssid'],
+      // Supports both Firestore (bool) and SQLite (int) and old Supabase style
+      voiceControl: map['voiceControl'] == true ||
+          map['voice_control_enabled'] == true ||
+          map['voice_control_enabled'] == 1,
+      singlePressAction:
+          map['singlePressAction'] ?? map['single_press_action'] ?? 'describe_scene',
+      doublePressAction:
+          map['doublePressAction'] ?? map['double_press_action'] ?? 'read_text',
+      wifiSsid: map['wifiSsid'] ?? map['wifi_ssid'],
       lastSyncedAt: map['last_synced_at'] != null
           ? DateTime.parse(map['last_synced_at'])
           : null,

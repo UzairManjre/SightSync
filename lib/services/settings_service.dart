@@ -1,85 +1,78 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/settings_model.dart';
 import 'database_helper.dart';
 
 class SettingsService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseHelper _localDb = DatabaseHelper();
+
+  String? get _userId => _auth.currentUser?.uid;
+
+  DocumentReference<Map<String, dynamic>> get _settingsDoc =>
+      _firestore.collection('users').doc(_userId).collection('data').doc('settings');
 
   // Fetch settings (Cloud + Local Merge)
   Future<SettingsModel?> fetchSettings() async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _userId;
     if (userId == null) return null;
 
-    SettingsModel? cloudSettings;
     SettingsModel? localSettings;
 
-    // 1. Try Local Load
+    // 1. Try local cache first
     try {
       localSettings = await _localDb.getSettings(userId);
-    } catch (e) {
-      print("Local DB skipped (Web or Error)");
-    }
+    } catch (_) {}
 
     try {
-      // 2. Try Cloud Load
-      final data = await _supabase
-          .from('settings')
-          .select()
-          .eq('user_id', userId)
-          .single();
-      cloudSettings = SettingsModel.fromMap(data);
-      
-      // 3. Merge & Save
-      final mergedSettings = cloudSettings.copyWith(
-        lastSyncedAt: localSettings?.lastSyncedAt 
-      );
-      
-      // Safely attempt local save
-      await _localDb.insertSettings(mergedSettings);
-      return mergedSettings;
-
+      // 2. Try Firestore
+      final snap = await _settingsDoc.get();
+      if (snap.exists && snap.data() != null) {
+        final data = snap.data()!;
+        data['user_id'] = userId; // Inject for model
+        final cloudSettings = SettingsModel.fromMap(data);
+        final merged = cloudSettings.copyWith(
+            lastSyncedAt: localSettings?.lastSyncedAt);
+        await _localDb.insertSettings(merged);
+        return merged;
+      }
     } catch (e) {
-      print("Cloud fetch failed: $e");
+      // Cloud failed — fall back to local
       return localSettings;
     }
+
+    // 3. No cloud data — create defaults
+    final defaults = SettingsModel(userId: userId);
+    await _settingsDoc.set(defaults.toFirestoreJson());
+    await _localDb.insertSettings(defaults);
+    return defaults;
   }
 
-  // Update specific setting
+  // Update a specific setting key
   Future<void> updateSetting(String key, dynamic value) async {
-    final userId = _supabase.auth.currentUser?.id;
+    final userId = _userId;
     if (userId == null) return;
 
     try {
-      await _supabase
-          .from('settings')
-          .update({key: value})
-          .eq('user_id', userId);
-          
-      // Update Local Timestamp
+      await _settingsDoc.update({key: value});
       final local = await _localDb.getSettings(userId);
-      // If local is null (Web), create a temporary object just to proceed logic if needed
-      // or just skip.
       if (local != null) {
-        await _localDb.insertSettings(
-          local.copyWith(lastSyncedAt: DateTime.now())
-        );
+        await _localDb
+            .insertSettings(local.copyWith(lastSyncedAt: DateTime.now()));
       }
     } catch (e) {
-      print("Error updating setting $key: $e");
       rethrow;
     }
   }
-  
-  Future<void> performManualSync() async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
 
+  Future<void> performManualSync() async {
+    final userId = _userId;
+    if (userId == null) return;
     final local = await _localDb.getSettings(userId);
     if (local != null) {
-      await _localDb.insertSettings(
-        local.copyWith(lastSyncedAt: DateTime.now())
-      );
+      await _localDb
+          .insertSettings(local.copyWith(lastSyncedAt: DateTime.now()));
     }
   }
 }

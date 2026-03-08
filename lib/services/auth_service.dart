@@ -1,63 +1,78 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  User? get currentUser => _supabase.auth.currentUser;
+  User? get firebaseUser => _auth.currentUser;
+
+  // Stream for auth state changes (used in SplashScreen)
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   // Login
   Future<UserModel?> login(String email, String password) async {
     try {
-      final AuthResponse res = await _supabase.auth.signInWithPassword(
+      final cred = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      if (res.user != null) return _mapSupabaseUser(res.user!);
+      if (cred.user != null) return _mapFirebaseUser(cred.user!);
       return null;
-    } catch (e) {
-      print("Login Error: $e");
-      rethrow;
+    } on FirebaseAuthException catch (e) {
+      throw _friendlyError(e);
     }
   }
 
   // Sign Up
   Future<UserModel?> signUp(String email, String password, String fullName) async {
     try {
-      final AuthResponse res = await _supabase.auth.signUp(
+      final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
-        data: {'full_name': fullName}, // Triggers your DB function
       );
-      if (res.user != null) return _mapSupabaseUser(res.user!);
-      return null;
-    } catch (e) {
-      print("Signup Error: $e");
-      rethrow;
+      // Set display name
+      await cred.user?.updateDisplayName(fullName);
+      await cred.user?.reload();
+      return _mapFirebaseUser(_auth.currentUser!);
+    } on FirebaseAuthException catch (e) {
+      throw _friendlyError(e);
     }
   }
 
+  // Logout
   Future<void> logout() async {
-    await _supabase.auth.signOut();
+    await _auth.signOut();
   }
 
   // Resend verification email
   Future<void> resendVerificationEmail(String email) async {
-    try {
-      await _supabase.auth.resend(type: OtpType.signup, email: email);
-    } catch (e) {
-      print("Resend Verification Error: $e");
-      rethrow;
-    }
+    await _auth.currentUser?.sendEmailVerification();
   }
 
-  // Correct Mapping using String ID
-  UserModel _mapSupabaseUser(User user) {
+  UserModel _mapFirebaseUser(User user) {
     return UserModel(
-      userId: user.id, // Now a String, matching the model
+      userId: user.uid,
       email: user.email!,
-      fullName: user.userMetadata?['full_name'],
-      createdAt: DateTime.parse(user.createdAt),
+      fullName: user.displayName,
+      createdAt: user.metadata.creationTime ?? DateTime.now(),
     );
+  }
+
+  // Human-readable error messages
+  Exception _friendlyError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return Exception('Incorrect email or password.');
+      case 'email-already-in-use':
+        return Exception('An account already exists with this email.');
+      case 'too-many-requests':
+        return Exception('Too many attempts. Please wait a moment and try again.');
+      case 'network-request-failed':
+        return Exception('No internet connection.');
+      default:
+        return Exception(e.message ?? 'Authentication failed.');
+    }
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/ble_service.dart';
 import '../../services/settings_service.dart'; // Added for Last Synced logic
 import '../../utils/theme.dart';
@@ -110,15 +110,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // 1. Fetch User Name
   void _fetchUserProfile() {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       setState(() {
-        _userName = user.userMetadata?['full_name']?.split(' ').first ?? "User";
+        _userName = user.displayName?.split(' ').first ?? "User";
       });
     }
   }
 
-  // 2. Fetch Last Synced Time from Supabase
+  // 2. Fetch Last Synced Time
   Future<void> _fetchLastSyncedTime() async {
     final settingsService = context.read<SettingsService>();
     final settings = await settingsService.fetchSettings();
