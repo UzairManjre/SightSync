@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/theme.dart';
 import 'login_screen.dart';
+import 'welcome_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -30,136 +31,47 @@ class _SplashScreenState extends State<SplashScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
+    } else {
+      // No session, go to Welcome Screen
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundDark,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF4E73DF), // Brighter Blue at top
-              AppColors.backgroundDark, // Fade to deep black
-            ],
-            stops: [0.0, 0.6],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 40),
-
-                // --- HERO SECTION ---
-                // Logo
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.visibility_outlined,
-                    size: 40,
-                    color: AppColors.primaryBlue,
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Title
-                const Text(
-                  "Welcome to",
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Simple SS Logo
+            Container(
+              width: 80,
+              height: 80,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  "SS",
                   style: TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.w300,
-                    color: Colors.white,
-                    height: 1.2,
-                  ),
-                ),
-                const Text(
-                  "SightSync",
-                  style: TextStyle(
-                    fontSize: 42,
+                    color: AppColors.authGradientTop,
+                    fontSize: 44,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    height: 1.0,
                   ),
                 ),
-
-                const SizedBox(height: 60),
-
-                // --- ACTION SECTION ---
-                // "Let's Sync In" Text
-                Row(
-                  children: [
-                    const Text(
-                      "Let's Sync In",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.arrow_forward,
-                      color: Colors.white70,
-                      size: 18,
-                    )
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // Action Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildAuthButton(
-                        context,
-                        label: "Login",
-                        onPressed: () {
-                          // Open LoginScreen in Login mode
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(isLogin: true),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(width: 16),
-
-                    Expanded(
-                      child: _buildAuthButton(
-                        context,
-                        label: "Create Account",
-                        onPressed: () {
-                          // Open LoginScreen in Signup mode
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(isLogin: false),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(
+              color: AppColors.authGradientTop,
+              strokeWidth: 2,
+            ),
+          ],
         ),
       ),
     );

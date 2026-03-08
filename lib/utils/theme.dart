@@ -1,5 +1,20 @@
 import 'package:flutter/material.dart';
 
+class AppRadius {
+  static const double card = 24.0;
+}
+
+class AppGradients {
+  static const LinearGradient cardOverlay = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0x1AFFFFFF),
+      Color(0x05FFFFFF),
+    ],
+  );
+}
+
 class AppColors {
   // Primary purple/blue gradient colors from design
   static const Color primaryDark = Color(0xFF1A1A2E);
@@ -8,8 +23,13 @@ class AppColors {
   static const Color accentPink = Color(0xFFE94560);
   
   // Background colors
-  static const Color backgroundDark = Color(0xFF0F0F1E);
+  static const Color backgroundDark = Color(0xFF000000); // Updated to pitch black for new design
   static const Color cardBackground = Color(0xFF1E1E2E);
+  
+  // Specific Auth Redesign Colors
+  static const Color authGradientTop = primaryBlue; // Reverted to original shade
+  static const Color glassBorder = Color(0x33FFFFFF); // 20% white for borders
+  static const Color glassFill = Color(0x19FFFFFF); // 10% white for fills
   
   // Text colors
   static const Color textPrimary = Colors.white;
@@ -19,6 +39,7 @@ class AppColors {
   static const Color success = Color(0xFF4CAF50);
   static const Color warning = Color(0xFFFF9800);
   static const Color error = Color(0xFFE94560);
+  static const Color deepBlack = Color(0xFF030712);
 }
 
 class AppTheme {
@@ -43,7 +64,7 @@ class AppTheme {
       ),
       iconTheme: IconThemeData(color: AppColors.textPrimary),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.cardBackground,
       elevation: 0,
       shape: RoundedRectangleBorder(

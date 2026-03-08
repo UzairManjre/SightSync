@@ -17,20 +17,25 @@ class BleService {
   final String batteryServiceUuid = "180F";
   final String batteryLevelCharUuid = "2A19";
 
-  BluetoothDevice? connectedDevice;
-  BluetoothCharacteristic? commandChar;
-  BluetoothCharacteristic? eventChar;
-  BluetoothCharacteristic? batteryChar; // New
+  // Dual Device Support
+  BluetoothDevice? leftDevice;
+  BluetoothDevice? rightDevice;
 
-  // Stream for Events (Button presses, Thermal warnings)
-  final StreamController<String> _eventController = StreamController<String>.broadcast();
-  Stream<String> get eventStream => _eventController.stream;
+  BluetoothCharacteristic? leftCommandChar;
+  BluetoothCharacteristic? rightCommandChar;
+  BluetoothCharacteristic? leftEventChar;
+  BluetoothCharacteristic? rightEventChar;
+  BluetoothCharacteristic? leftBatteryChar;
+  BluetoothCharacteristic? rightBatteryChar;
 
-  // Stream for Battery Level (New)
-  final StreamController<int> _batteryController = StreamController<int>.broadcast();
-  Stream<int> get batteryStream => _batteryController.stream;
+  // Stream for Events (Consolidated from both arms)
+  final StreamController<Map<String, dynamic>> _eventController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get eventStream => _eventController.stream;
 
-  // Initial Permissions Check
+  // Stream for Battery Levels
+  final StreamController<Map<String, int>> _batteryController = StreamController<Map<String, int>>.broadcast();
+  Stream<Map<String, int>> get batteryStream => _batteryController.stream;
+
   Future<void> init() async {
     await [
       Permission.location,
@@ -40,11 +45,7 @@ class BleService {
   }
 
   Future<void> startScan() async {
-    // Scanning for both our Custom Service AND Battery Service devices
-    await FlutterBluePlus.startScan(
-      // withServices: [Guid(serviceUuid)], // Filter removed for broader compatibility
-      timeout: const Duration(seconds: 15),
-    );
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
   }
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
@@ -53,102 +54,115 @@ class BleService {
     await FlutterBluePlus.stopScan();
   }
 
-  Future<void> connect(BluetoothDevice device) async {
+  Future<void> connectLeft(BluetoothDevice device) async {
     await device.connect();
-    connectedDevice = device;
-    await _discoverServices(device);
+    leftDevice = device;
+    await _discoverServices(device, "left");
+  }
+
+  Future<void> connectRight(BluetoothDevice device) async {
+    await device.connect();
+    rightDevice = device;
+    await _discoverServices(device, "right");
   }
 
   Future<void> disconnect() async {
-    if (connectedDevice != null) {
-      await connectedDevice!.disconnect();
-      connectedDevice = null;
-      commandChar = null;
-      eventChar = null;
-      batteryChar = null;
-    }
+    if (leftDevice != null) await leftDevice!.disconnect();
+    if (rightDevice != null) await rightDevice!.disconnect();
+    leftDevice = null;
+    rightDevice = null;
+    leftCommandChar = null;
+    rightCommandChar = null;
+    leftEventChar = null;
+    rightEventChar = null;
+    leftBatteryChar = null;
+    rightBatteryChar = null;
   }
 
-  Future<void> _discoverServices(BluetoothDevice device) async {
+  Future<void> _discoverServices(BluetoothDevice device, String side) async {
     List<BluetoothService> services = await device.discoverServices();
     
     for (var service in services) {
       String currentUuid = service.uuid.toString().toUpperCase();
 
-      // 1. Setup Custom Service
       if (currentUuid == serviceUuid) {
         for (var characteristic in service.characteristics) {
           String uuid = characteristic.uuid.toString().toUpperCase();
           if (uuid == commandCharUuid) {
-            commandChar = characteristic;
+            if (side == "left") leftCommandChar = characteristic;
+            else rightCommandChar = characteristic;
           } else if (uuid == eventCharUuid) {
-            eventChar = characteristic;
-            await _setupNotifications(eventChar!);
+            if (side == "left") {
+              leftEventChar = characteristic;
+              await _setupNotifications(leftEventChar!, "left");
+            } else {
+              rightEventChar = characteristic;
+              await _setupNotifications(rightEventChar!, "right");
+            }
           }
         }
       }
       
-      // 2. Setup Battery Service (Standard 0x180F)
-      // Note: FlutterBluePlus might return 128-bit UUID, so we check 'contains' or exact match
       if (currentUuid.contains(batteryServiceUuid)) {
         for (var characteristic in service.characteristics) {
           if (characteristic.uuid.toString().toUpperCase().contains(batteryLevelCharUuid)) {
-            batteryChar = characteristic;
-            await _setupBatteryNotifications(batteryChar!);
+            if (side == "left") {
+              leftBatteryChar = characteristic;
+              await _setupBatteryNotifications(leftBatteryChar!, "left");
+            } else {
+              rightBatteryChar = characteristic;
+              await _setupBatteryNotifications(rightBatteryChar!, "right");
+            }
           }
         }
       }
     }
   }
 
-  // Handle Custom Events (Buttons, Thermal)
-  Future<void> _setupNotifications(BluetoothCharacteristic characteristic) async {
+  Future<void> _setupNotifications(BluetoothCharacteristic characteristic, String side) async {
     await characteristic.setNotifyValue(true);
     characteristic.lastValueStream.listen((value) {
       if (value.isNotEmpty) {
-        int code = value[0];
-        _handleEventCode(code);
+        _handleEventCode(value[0], side);
       }
     });
   }
 
-  // Handle Battery Updates
-  Future<void> _setupBatteryNotifications(BluetoothCharacteristic characteristic) async {
+  Future<void> _setupBatteryNotifications(BluetoothCharacteristic characteristic, String side) async {
     await characteristic.setNotifyValue(true);
-    // Read initial value
     List<int> initialVal = await characteristic.read();
     if (initialVal.isNotEmpty) {
-      _batteryController.add(initialVal[0]);
+      _batteryController.add({side: initialVal[0]});
     }
-    
-    // Listen for changes
     characteristic.lastValueStream.listen((value) {
       if (value.isNotEmpty) {
-        _batteryController.add(value[0]); // The first byte is the percentage (0-100)
+        _batteryController.add({side: value[0]});
       }
     });
   }
 
-  void _handleEventCode(int code) {
+  void _handleEventCode(int code, String side) {
     String message = "";
     switch (code) {
-      case 0x01: message = "Single Button Press"; break;
-      case 0x02: message = "Double Button Press"; break;
+      case 0x01: message = "Single Press"; break;
+      case 0x02: message = "Double Press"; break;
       case 0x03: message = "Long Press Start"; break;
       case 0x04: message = "Long Press End"; break;
-      case 0x10: message = "Low Battery Warning"; break;
+      case 0x10: message = "Low Battery"; break;
       case 0x11: message = "Thermal Warning"; break;
-      case 0x20: message = "Night Mode Activated"; break;
-      case 0x21: message = "Night Mode Deactivated"; break;
-      default: message = "Unknown Event: $code";
+      default: message = "Event: $code";
     }
-    _eventController.add(message);
+    _eventController.add({"side": side, "message": message, "code": code});
   }
 
-  Future<void> writeCommand(Map<String, dynamic> command) async {
-    if (commandChar != null) {
-      String jsonString = jsonEncode(command);
-      await commandChar!.write(utf8.encode(jsonString));
+  Future<void> writeCommand(Map<String, dynamic> command, {String? side}) async {
+    String jsonString = jsonEncode(command);
+    List<int> bytes = utf8.encode(jsonString);
+    if (side == "left" || side == null) {
+      if (leftCommandChar != null) await leftCommandChar!.write(bytes);
+    }
+    if (side == "right" || side == null) {
+      if (rightCommandChar != null) await rightCommandChar!.write(bytes);
     }
   }
 }

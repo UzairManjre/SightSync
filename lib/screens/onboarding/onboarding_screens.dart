@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
 import '../../services/ble_service.dart';
 import '../../utils/theme.dart';
+import '../../utils/size_config.dart';
 import '../dashboard/dashboard_screen.dart';
 
 const String backgroundImageUrl = '/mnt/data/6c49ffa0-be1d-4a9b-9c13-264460091105.png';
@@ -52,15 +53,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF4facfe), // Light Blue
-                    Color(0xFF00f2fe), // Cyan accent
-                    Color(0xFF1A1A2E), // Dark Blue
-                    Color(0xFF000000), // Black
+                    AppColors.authGradientTop,
+                    Colors.black,
                   ],
-                  stops: [0.0, 0.2, 0.6, 1.0],
+                  stops: [0.0, 0.8],
                 ),
               ),
             ),
@@ -229,8 +228,11 @@ class DesignerIntroPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig.init(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 60, 28, 36),
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.w(28), SizeConfig.h(60), SizeConfig.w(28), SizeConfig.h(36)
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -239,31 +241,41 @@ class DesignerIntroPage extends StatelessWidget {
             'SightSync is ready\nto guide you',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 44,
+              fontSize: SizeConfig.sp(42),
               height: 1.1,
-              fontWeight: FontWeight.w300, // Thinner font as per design
+              fontWeight: FontWeight.w300,
               letterSpacing: -1.0,
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: SizeConfig.h(24)),
           Text(
             'Follow the on-screen steps or use voice guidance\nto complete your setup.',
-            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16, height: 1.5),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.8),
+              fontSize: SizeConfig.sp(15),
+              height: 1.5,
+            ),
           ),
           const Spacer(),
           Row(
             children: [
               Container(
-                width: 54,
-                height: 54,
+                width: SizeConfig.w(54),
+                height: SizeConfig.w(54),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white.withOpacity(0.25)),
-                  color: Colors.white.withOpacity(0.05), // Slight fill
+                  color: Colors.white.withOpacity(0.05),
                 ),
-                child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9))),
+                child: Center(
+                  child: Icon(
+                    Icons.graphic_eq,
+                    color: Colors.white.withOpacity(0.9),
+                    size: SizeConfig.sp(24),
+                  ),
+                ),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: SizeConfig.w(16)),
               Expanded(
                 child: SlideToAdvance(onSlideComplete: onSlideComplete, label: 'Start'),
               ),
@@ -285,70 +297,71 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
   @override
   void initState() {
     super.initState();
-    // Start scanning once this page builds
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final bleService = context.read<BleService>();
-      await bleService.init(); // Request permissions
+      await bleService.init();
       bleService.startScan();
     });
   }
 
-  Future<void> _onDeviceTap(BuildContext context, ScanResult r) async {
+  Future<void> _onConnectGlasses(BuildContext context, List<ScanResult> results) async {
     final bleService = context.read<BleService>();
-    final deviceName = r.device.platformName.isNotEmpty
-        ? r.device.platformName
-        : (r.device.name.isNotEmpty ? r.device.name : 'Unknown Device');
+    
+    // Logic: Find SightSync devices or XIAO modules
+    // For now, let's look for anything that looks like our modules
+    final sightSyncDevices = results.where((r) => 
+      r.device.platformName.contains('SightSync') || 
+      r.device.platformName.contains('XIAO') ||
+      r.device.name.contains('SightSync')
+    ).toList();
 
-    // Show connecting dialog (non-dismissable)
+    if (sightSyncDevices.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please make sure both arm modules are powered on.'))
+      );
+      return;
+    }
+
+    // Identitfy left/right (this is a placeholder logic, usually based on suffix -L/-R)
+    final d1 = sightSyncDevices[0].device;
+    final d2 = sightSyncDevices[1].device;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => false,
-        child: AlertDialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.95))),
-              const SizedBox(height: 12),
-              Text('Connecting to $deviceName...', style: TextStyle(color: Colors.white.withOpacity(0.9))),
-            ],
-          ),
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 20),
+            Text('Syncing Arms...', style: TextStyle(color: Colors.white.withOpacity(0.9))),
+          ],
         ),
       ),
     );
 
     try {
-      // Attempt connection
       await bleService.stopScan();
-      await bleService.connect(r.device);
+      // Connect to both in parallel
+      await Future.wait([
+        bleService.connectLeft(d1),
+        bleService.connectRight(d2),
+      ]);
 
-      // After successful connection, pop the dialog and push pairing page
       if (context.mounted) {
-        Navigator.of(context).pop(); // pop connecting dialog
+        Navigator.of(context).pop(); // pop dialog
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => PairingConfirmPage(deviceName: deviceName)),
+          MaterialPageRoute(builder: (_) => PairingConfirmPage(deviceName: 'SightSync Glasses')),
         );
       }
     } catch (e) {
-      // connection failed
       if (context.mounted) {
-        Navigator.of(context).pop(); // pop connecting dialog
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            backgroundColor: AppColors.cardBackground,
-            title: Text('Connection Failed', style: TextStyle(color: Colors.white)),
-            content: Text('Could not connect to $deviceName. Try again.', style: TextStyle(color: Colors.white70)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text('OK', style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Connection failed: $e'))
         );
       }
     }
@@ -357,144 +370,108 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
   @override
   Widget build(BuildContext context) {
     final bleService = context.watch<BleService>();
+    SizeConfig.init(context);
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final cardWidth = constraints.maxWidth * 0.85;
-      final cardHeight = constraints.maxHeight * 0.65; // Taller card
+    return Column(
+      children: [
+        const Spacer(),
+        Center(
+          child: Container(
+            width: SizeConfig.w(320),
+            height: SizeConfig.w(320),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF0F1535).withOpacity(0.4),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 30,
+                  spreadRadius: 10,
+                )
+              ],
+            ),
+            child: ClipOval(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.bluetooth, size: SizeConfig.w(80), color: Colors.white.withOpacity(0.9)),
+                    SizedBox(height: SizeConfig.h(20)),
+                    Text(
+                      'Make sure Bluetooth is turned on',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: SizeConfig.sp(14)),
+                    ),
+                    SizedBox(height: SizeConfig.h(12)),
+                    Container(width: SizeConfig.w(180), height: 1, color: Colors.white.withOpacity(0.1)),
+                    SizedBox(height: SizeConfig.h(12)),
+                    Text(
+                      'Select your device',
+                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: SizeConfig.sp(12)),
+                    ),
+                    SizedBox(height: SizeConfig.h(10)),
+                    StreamBuilder<List<ScanResult>>(
+                      stream: bleService.scanResults,
+                      builder: (context, snapshot) {
+                        final results = snapshot.data ?? [];
+                        final sightSyncFound = results.any((r) => 
+                          r.device.platformName.contains('SightSync') || 
+                          r.device.platformName.contains('XIAO')
+                        );
 
-      return Column(
-        children: [
-          const Spacer(),
-          Center(
-            child: Container(
-              width: cardWidth,
-              height: cardHeight,
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F1535).withOpacity(0.6), // Dark blue glass
-                borderRadius: BorderRadius.circular(cardWidth * 0.1), // Rounded corners
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  )
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(cardWidth * 0.1),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 30),
-                      Icon(Icons.bluetooth, size: 60, color: Colors.blue.shade200),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Make sure Bluetooth is turned on',
-                        style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16),
-                      ),
-                      const SizedBox(height: 20),
-                      Container(width: cardWidth * 0.8, height: 1, color: Colors.white.withOpacity(0.1)),
-                      const SizedBox(height: 20),
-                      Text('Select your device', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: StreamBuilder<List<ScanResult>>(
-                          stream: bleService.scanResults,
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                              return Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const CircularProgressIndicator(color: Colors.white54),
-                                    const SizedBox(height: 16),
-                                    Text('Searching...', style: TextStyle(color: Colors.white.withOpacity(0.5))),
-                                  ],
-                                ),
-                              );
-                            }
-                            final results = snapshot.data!;
-                            return ListView.separated(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                              itemCount: results.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 10),
-                              itemBuilder: (ctx, i) {
-                                final r = results[i];
-                                final deviceName = r.device.platformName.isNotEmpty ? r.device.platformName : (r.device.name.isNotEmpty ? r.device.name : 'Unknown Device');
-                                return GestureDetector(
-                                  onTap: () => _onDeviceTap(context, r),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.05),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: Colors.white.withOpacity(0.05)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.headphones, color: Colors.white.withOpacity(0.9), size: 20),
-                                        const SizedBox(width: 16),
-                                        Expanded(child: Text(deviceName, style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 16))),
-                                        Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.3)),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
+                        if (sightSyncFound) {
+                          return GestureDetector(
+                            onTap: () => _onConnectGlasses(context, results),
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                'SightSync Glasses',
+                                style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text('Searching...', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: SizeConfig.sp(12))),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          const Spacer(),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DesignerButtonTutorialPage()),
-              );
-            },
-            child: Text(
-              "Skip Setup",
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                decoration: TextDecoration.underline,
+        ),
+        const Spacer(),
+        Column(
+          children: [
+            Container(
+              width: SizeConfig.w(50),
+              height: SizeConfig.w(50),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
               ),
+              child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
             ),
-          ),
-          const SizedBox(height: 10),
-          Column(
-            children: [
-              Container(
-                width: 50, 
-                height: 50, 
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle, 
-                  border: Border.all(color: Colors.white.withOpacity(0.2))
-                ), 
-                child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: 24))
-              ),
-              const SizedBox(height: 10),
-              Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
-            ],
-          ),
-          const SizedBox(height: 30),
-        ],
-      );
-    });
+            SizedBox(height: SizeConfig.h(10)),
+            Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12))),
+          ],
+        ),
+        SizedBox(height: SizeConfig.h(30)),
+      ],
+    );
   }
 }
 
-/// Page displayed once the BLE connect attempt is successful.
-/// Contains pairing code UI and Continue button (Continue enabled only when bleService confirms connected).
 class PairingConfirmPage extends StatefulWidget {
   final String deviceName;
   const PairingConfirmPage({required this.deviceName, super.key});
@@ -504,136 +481,120 @@ class PairingConfirmPage extends StatefulWidget {
 }
 
 class _PairingConfirmPageState extends State<PairingConfirmPage> {
-  // Example hard-coded code — in real life you'd get actual pairing code or show instructions
   final List<String> _codeDigits = ['6', '6', '8', '0', '0', '1'];
 
   @override
   Widget build(BuildContext context) {
     final bleService = context.watch<BleService>();
-    final connected = bleService.connectedDevice != null;
+    final bothConnected = bleService.leftDevice != null && bleService.rightDevice != null;
+    SizeConfig.init(context);
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // Background Gradient
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF4facfe),
-                    Color(0xFF00f2fe),
-                    Color(0xFF1A1A2E),
-                    Color(0xFF000000),
-                  ],
-                  stops: [0.0, 0.2, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
-           Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(-0.5, -0.5),
-                  radius: 1.5,
-                  colors: [Colors.white.withOpacity(0.1), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
           SafeArea(
             child: Column(
               children: [
                 const Spacer(),
                 Center(
                   child: Container(
-                    width: MediaQuery.of(context).size.width * 0.85,
-                    height: MediaQuery.of(context).size.height * 0.6,
+                    width: SizeConfig.w(320),
+                    height: SizeConfig.w(320),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F1535).withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.1),
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF0F1535).withOpacity(0.4),
                       border: Border.all(color: Colors.white.withOpacity(0.1)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 5,
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 30,
+                          spreadRadius: 10,
                         )
                       ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.1),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 20),
-                          Icon(Icons.bluetooth_connected, size: 64, color: Colors.blue.shade200),
-                          const SizedBox(height: 20),
-                          Text(widget.deviceName, style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 18)),
-                          const SizedBox(height: 20),
-                          Container(height: 1, width: MediaQuery.of(context).size.width * 0.6, color: Colors.white.withOpacity(0.1)),
-                          const SizedBox(height: 20),
-                          Text('Confirm the pairing code.', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 16)),
-                          const SizedBox(height: 30),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: _codeDigits.map((d) {
-                              return Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 4),
-                                width: 40,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                ),
-                                child: Center(child: Text(d, style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 40),
-                          SizedBox(
-                            width: 160,
-                            child: OutlinedButton(
-                              onPressed: connected
-                                  ? () {
-                                Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const DesignerButtonTutorialPage()));
-                              }
-                                  : null,
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: Colors.white.withOpacity(0.3)),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                backgroundColor: connected ? Colors.white.withOpacity(0.1) : Colors.transparent,
-                              ),
-                              child: Text('Continue', style: TextStyle(color: connected ? Colors.white : Colors.white.withOpacity(0.4), fontSize: 16)),
+                    child: ClipOval(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.bluetooth_connected, size: SizeConfig.w(70), color: Colors.blue.shade200),
+                            SizedBox(height: SizeConfig.h(10)),
+                            Text(widget.deviceName, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: SizeConfig.sp(16))),
+                            SizedBox(height: SizeConfig.h(12)),
+                            Container(width: SizeConfig.w(180), height: 1, color: Colors.white.withOpacity(0.1)),
+                            SizedBox(height: SizeConfig.h(12)),
+                            Text('Confirm the pairing code.', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: SizeConfig.sp(14))),
+                            SizedBox(height: SizeConfig.h(20)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: _codeDigits.map((d) {
+                                return Container(
+                                  margin: EdgeInsets.symmetric(horizontal: SizeConfig.w(4)),
+                                  width: SizeConfig.w(36),
+                                  height: SizeConfig.h(46),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                  ),
+                                  child: Center(
+                                    child: Text(d, style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(18), fontWeight: FontWeight.w600)),
+                                  ),
+                                );
+                              }).toList(),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: SizeConfig.h(25)),
+                            GestureDetector(
+                              onTap: bothConnected ? () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(builder: (_) => const DesignerButtonTutorialPage())
+                                );
+                              } : null,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(32), vertical: SizeConfig.h(10)),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white.withOpacity(bothConnected ? 0.3 : 0.1)),
+                                  color: bothConnected ? Colors.white.withOpacity(0.05) : Colors.transparent,
+                                ),
+                                child: Text(
+                                  'Continue',
+                                  style: TextStyle(
+                                    color: bothConnected ? Colors.white : Colors.white.withOpacity(0.35),
+                                    fontSize: SizeConfig.sp(14),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 30),
+                const Spacer(),
                 Column(
                   children: [
                     Container(
-                      width: 50, 
-                      height: 50, 
+                      width: SizeConfig.w(50),
+                      height: SizeConfig.w(50),
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle, 
-                        border: Border.all(color: Colors.white.withOpacity(0.2))
-                      ), 
-                      child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: 24))
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      ),
+                      child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
                     ),
-                    const SizedBox(height: 10),
-                    Text(connected ? 'Voice guidance enabled' : 'Waiting for device...', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+                    SizedBox(height: SizeConfig.h(10)),
+                    Text(
+                      bothConnected ? 'Voice guidance enabled' : 'Waiting for sync...',
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12)),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 30),
+                SizedBox(height: SizeConfig.h(30)),
               ],
             ),
           ),
@@ -643,153 +604,107 @@ class _PairingConfirmPageState extends State<PairingConfirmPage> {
   }
 }
 
-class DesignerButtonTutorialPage extends StatefulWidget {
-  const DesignerButtonTutorialPage({super.key});
-  @override
-  State<DesignerButtonTutorialPage> createState() => _DesignerButtonTutorialPageState();
-}
 
-class _DesignerButtonTutorialPageState extends State<DesignerButtonTutorialPage> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BleService>().startScan();
-    });
-  }
+class DesignerButtonTutorialPage extends StatelessWidget {
+  const DesignerButtonTutorialPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background Gradient
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF4facfe),
-                    Color(0xFF00f2fe),
-                    Color(0xFF1A1A2E),
-                    Color(0xFF000000),
-                  ],
-                  stops: [0.0, 0.2, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(-0.5, -0.5),
-                  radius: 1.5,
-                  colors: [Colors.white.withOpacity(0.1), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: LayoutBuilder(builder: (context, constraints) {
-              final cardWidth = constraints.maxWidth * 0.85;
-              final cardHeight = constraints.maxHeight * 0.65;
+    SizeConfig.init(context);
 
-              return Column(
-                children: [
-                  const Spacer(),
-                  Center(
-                    child: Container(
-                      width: cardWidth,
-                      height: cardHeight,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F1535).withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(cardWidth * 0.1),
-                        border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 20,
-                            spreadRadius: 5,
-                          )
+    return Column(
+      children: [
+        const Spacer(),
+        Center(
+          child: Container(
+            width: SizeConfig.w(320),
+            height: SizeConfig.w(320),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF0F1535).withOpacity(0.4),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 30,
+                  spreadRadius: 10,
+                )
+              ],
+            ),
+            child: ClipOval(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(30)),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.smart_toy_outlined, size: SizeConfig.w(60), color: Colors.blue.shade200),
+                      SizedBox(height: SizeConfig.h(10)),
+                      Text(
+                        'Get to Know Your Button',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: SizeConfig.sp(16), fontWeight: FontWeight.w500),
+                      ),
+                      SizedBox(height: SizeConfig.h(20)),
+                      Row(
+                        children: [
+                          Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle)),
+                          SizedBox(width: 12),
+                          Expanded(child: Text('Single press to read text', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(13)))),
                         ],
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(cardWidth * 0.1),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 26.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 20),
-                              // Replaced Image.network with Icon since asset is missing
-                              Icon(Icons.smart_toy, size: 100, color: Colors.white.withOpacity(0.9)),
-                              const SizedBox(height: 20),
-                              Text('Get to Know Your Button', style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 18)),
-                              const SizedBox(height: 30),
-                              Row(
-                                children: [
-                                  Container(width: 12, height: 12, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                                  const SizedBox(width: 16),
-                                  Expanded(child: Text('single press to read text', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 16))),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              Row(
-                                children: [
-                                  Container(width: 40, height: 12, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6))),
-                                  const SizedBox(width: 16),
-                                  Expanded(child: Text('press and hold to describe your surroundings', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 16))),
-                                ],
-                              ),
-                              const SizedBox(height: 30),
-                              Container(width: double.infinity, height: 1, color: Colors.white.withOpacity(0.1)),
-                              const SizedBox(height: 30),
-                              SizedBox(
-                                width: 180,
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const DashboardScreen()));
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: Colors.white.withOpacity(0.3)),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                  ),
-                                  child: Text('Setup Complete', style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 16)),
-                                ),
-                              ),
-                            ],
+                      SizedBox(height: SizeConfig.h(12)),
+                      Row(
+                        children: [
+                          Container(width: 24, height: 8, decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(4))),
+                          SizedBox(width: 12),
+                          Expanded(child: Text('Long press to describe scene', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(13)))),
+                        ],
+                      ),
+                      SizedBox(height: SizeConfig.h(30)),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const DashboardScreen()));
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(28), vertical: SizeConfig.h(10)),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                            color: Colors.white.withOpacity(0.05),
+                          ),
+                          child: Text(
+                            'Setup Complete',
+                            style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Column(
-                    children: [
-                      Container(
-                        width: 50, 
-                        height: 50, 
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle, 
-                          border: Border.all(color: Colors.white.withOpacity(0.2))
-                        ), 
-                        child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: 24))
-                      ),
-                      const SizedBox(height: 10),
-                      Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
                     ],
                   ),
-                  const SizedBox(height: 30),
-                ],
-              );
-            }),
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
+        ),
+        const Spacer(),
+        Column(
+          children: [
+            Container(
+              width: SizeConfig.w(50),
+              height: SizeConfig.w(50),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withOpacity(0.2)),
+              ),
+              child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
+            ),
+            SizedBox(height: SizeConfig.h(10)),
+            Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12))),
+          ],
+        ),
+        SizedBox(height: SizeConfig.h(30)),
+      ],
     );
   }
 }

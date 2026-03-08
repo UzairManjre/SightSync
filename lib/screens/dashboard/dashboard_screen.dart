@@ -79,7 +79,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await settingsService.updateSetting(key, value);
 
       // C. Send BLE Command to ESP32
-      if (bleService.connectedDevice != null) {
+      if (bleService.leftDevice != null || bleService.rightDevice != null) {
         // Protocol: {"cmd": "set_config", "key": "single_press", "val": "ocr"}
         await bleService.writeCommand({
           "cmd": "set_config",
@@ -169,15 +169,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // Safety Alert
     bleService.eventStream.listen((event) {
-      if (event == "Thermal Warning" && mounted) {
+      if (event['message'] == "Thermal Warning" && mounted) {
         _showThermalAlert();
       }
     });
 
-    // Real Battery Updates
-    bleService.batteryStream.listen((level) {
+    // Real Battery Updates (Average of both arms if available)
+    bleService.batteryStream.listen((levels) {
       if (mounted) {
-        setState(() => _batteryLevel = level);
+        setState(() {
+          // simple average or individual display
+          if (levels.containsKey('left')) _batteryLevel = levels['left']!;
+          else if (levels.containsKey('right')) _batteryLevel = levels['right']!;
+        });
       }
     });
   }
@@ -200,7 +204,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _toggleListeningMode() {
-    final isConnected = context.read<BleService>().connectedDevice != null;
+    final bleService = context.read<BleService>();
+    final isConnected = bleService.leftDevice != null || bleService.rightDevice != null;
     if (!isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Connect glasses first."), backgroundColor: AppColors.error),
@@ -231,7 +236,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final bleService = context.watch<BleService>();
-    final isConnected = bleService.connectedDevice != null;
+    final isConnected = bleService.leftDevice != null || bleService.rightDevice != null;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
@@ -245,8 +250,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF050510), Color(0xFF0A1A35), Color(0xFF4E73DF)],
-                stops: [0.0, 0.6, 1.0],
+                colors: [
+                  Colors.black,
+                  Color(0xFF0A1A35),
+                  AppColors.authGradientTop,
+                ],
+                stops: [0.0, 0.4, 1.0],
               ),
             ),
           ),
@@ -348,8 +357,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildStatusDot(isConnected),
                 const SizedBox(width: 16),
-                const Text("Connection Status", style: TextStyle(color: Colors.white70, fontSize: 16)),
-                const Spacer(),
+                const Expanded(
+                  child: Text("Connection Status", style: TextStyle(color: Colors.white70, fontSize: 16), overflow: TextOverflow.ellipsis),
+                ),
                 Text(isConnected ? "Connected" : "Disconnected", style: const TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
@@ -360,17 +370,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildStatusCard(
             child: Row(
               children: [
-                const Text("Battery", style: TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(width: 12),
-                const Text("-", style: TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text("Battery", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                ),
                 Text(
                   isConnected ? "$_batteryLevel%" : "--",
                   style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const Spacer(),
+                const SizedBox(width: 16),
                 SizedBox(
-                  width: 100,
+                  width: 80, // Reduced slightly to ensure it fits mobile screens confidently
                   height: 12,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(6),
@@ -390,12 +399,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _buildStatusCard(
             child: Row(
               children: [
-                const Text("Last Synced", style: TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(width: 12),
-                const Text("-", style: TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text("Last Synced", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                ),
                 Text(_lastSyncedText, style: const TextStyle(color: Colors.white, fontSize: 16)),
-                const Spacer(),
+                const SizedBox(width: 16),
                 // Sync Button
                 GestureDetector(
                   onTap: _isSyncing || !isConnected ? null : _performManualSync,
