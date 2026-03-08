@@ -43,7 +43,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _fetchUserProfile();
     _fetchLastSyncedTime(); // Get initial sync time from DB
     _loadControlSettings();
-    _setupBleListeners();
+    
+    // Only setup listeners if a device is already connected (prevents early iOS prompt)
+    final bleService = context.read<BleService>();
+    if (bleService.leftDevice != null || bleService.rightDevice != null) {
+      _setupBleListeners();
+    }
   }
 
   Future<void> _loadControlSettings() async {
