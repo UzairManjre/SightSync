@@ -315,16 +315,18 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
       r.device.name.contains('SightSync')
     ).toList();
 
-    if (sightSyncDevices.length < 2) {
+    // TEMPORARY TEST: Change < 2 to < 1
+    if (sightSyncDevices.length < 1) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please make sure both arm modules are powered on.'))
+        const SnackBar(content: Text('Please make sure the arm module is powered on.'))
       );
       return;
     }
 
     // Identitfy left/right (this is a placeholder logic, usually based on suffix -L/-R)
     final d1 = sightSyncDevices[0].device;
-    final d2 = sightSyncDevices[1].device;
+    // TEST ONLY: Comment out right arm requirement
+    // final d2 = sightSyncDevices[1].device;
 
     showDialog(
       context: context,
@@ -345,10 +347,11 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
 
     try {
       await bleService.stopScan();
-      // Connect to both in parallel
+      // Connect to left arm only for testing
       await Future.wait([
         bleService.connectLeft(d1),
-        bleService.connectRight(d2),
+        // TEST ONLY: Comment out right arm connection
+        // bleService.connectRight(d2),
       ]);
 
       if (context.mounted) {
@@ -416,9 +419,20 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
                       stream: bleService.scanResults,
                       builder: (context, snapshot) {
                         final results = snapshot.data ?? [];
+                        
+                        // DEBUG: Print all discovered devices to Xcode console
+                        if (results.isNotEmpty) {
+                          print("--- BLE SCAN FILTER ---");
+                          for (var r in results) {
+                            print("Found: PlatformName: '${r.device.platformName}', Name: '${r.device.name}', ID: ${r.device.remoteId}");
+                          }
+                          print("-----------------------");
+                        }
+
                         final sightSyncFound = results.any((r) => 
                           r.device.platformName.contains('SightSync') || 
-                          r.device.platformName.contains('XIAO')
+                          r.device.platformName.contains('XIAO') ||
+                          r.device.name.contains('SightSync')
                         );
 
                         if (sightSyncFound) {
