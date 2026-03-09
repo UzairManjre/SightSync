@@ -45,7 +45,15 @@ class BleService {
   }
 
   Future<void> startScan() async {
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    // Wait for Bluetooth to actually be ON before scanning (critical for iOS)
+    await FlutterBluePlus.adapterState.where((val) => val == BluetoothAdapterState.on).first;
+    
+    // Now start the scan safely
+    try {
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    } catch (e) {
+      print("Failed to start scan: $e");
+    }
   }
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;

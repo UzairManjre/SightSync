@@ -294,14 +294,27 @@ class DesignerConnectPage extends StatefulWidget {
 }
 
 class _DesignerConnectPageState extends State<DesignerConnectPage> {
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
+  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+
   @override
   void initState() {
     super.initState();
+    _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
+      if (mounted) setState(() => _adapterState = state);
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final bleService = context.read<BleService>();
       await bleService.init();
       bleService.startScan();
     });
+  }
+
+  @override
+  void dispose() {
+    _adapterStateSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _onConnectGlasses(BuildContext context, List<ScanResult> results) async {
@@ -434,6 +447,13 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
                           r.device.platformName.contains('XIAO') ||
                           r.device.name.contains('SightSync')
                         );
+
+                        if (_adapterState != BluetoothAdapterState.on) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text('Bluetooth is OFF.', style: TextStyle(color: AppColors.error, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.bold)),
+                          );
+                        }
 
                         return Column(
                           children: [
