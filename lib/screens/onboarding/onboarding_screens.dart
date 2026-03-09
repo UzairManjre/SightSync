@@ -435,26 +435,48 @@ class _DesignerConnectPageState extends State<DesignerConnectPage> {
                           r.device.name.contains('SightSync')
                         );
 
-                        if (sightSyncFound) {
-                          return GestureDetector(
-                            onTap: () => _onConnectGlasses(context, results),
-                            child: Container(
-                              margin: const EdgeInsets.only(top: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(20),
+                        return Column(
+                          children: [
+                            if (sightSyncFound)
+                              GestureDetector(
+                                onTap: () => _onConnectGlasses(context, results),
+                                child: Container(
+                                  margin: const EdgeInsets.only(top: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    'SightSync Glasses',
+                                    style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
+                                  ),
+                                ),
                               ),
-                              child: Text(
-                                'SightSync Glasses',
-                                style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
+                            if (!sightSyncFound)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text('Searching...', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: SizeConfig.sp(12))),
+                              ),
+                            // DEBUG LIST
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 120, // scrollable area
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: results.length,
+                                itemBuilder: (context, index) {
+                                  final r = results[index];
+                                  final name = r.device.platformName.isNotEmpty ? r.device.platformName : (r.device.name.isNotEmpty ? r.device.name : 'Unknown');
+                                  return Text(
+                                    "Found: $name", 
+                                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
+                                    textAlign: TextAlign.center,
+                                  );
+                                },
                               ),
                             ),
-                          );
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Text('Searching...', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: SizeConfig.sp(12))),
+                          ],
                         );
                       },
                     ),
