@@ -55,6 +55,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (mounted) {
         if (user != null) {
+          // Check if email is verified in Firebase
+          final firebaseUser = authService.firebaseUser;
+          if (firebaseUser != null && !firebaseUser.emailVerified) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Please verify your email address.'),
+                backgroundColor: AppColors.error,
+                action: SnackBarAction(
+                  label: 'Resend',
+                  onPressed: () => authService.resendVerificationEmail(email),
+                ),
+              ),
+            );
+            return;
+          }
+
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (_) =>
@@ -65,44 +82,11 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
-        String message = e.toString();
-        SnackBarAction? action;
-
-        if (e.toString().contains('Email not confirmed')) {
-          message = 'Please verify your email before logging in.';
-          action = SnackBarAction(
-            label: 'Resend',
-            onPressed: () async {
-              try {
-                await authService.resendVerificationEmail(email);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Verification email sent!'),
-                      backgroundColor: AppColors.success,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error resending email: ${e.toString()}'),
-                      backgroundColor: AppColors.error,
-                    ),
-                  );
-                }
-              }
-            },
-          );
-        }
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message),
+            content: Text(e.toString().replaceAll('Exception: ', '')),
             backgroundColor: AppColors.error,
-            action: action,
-            duration: const Duration(seconds: 6),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
