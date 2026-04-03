@@ -144,9 +144,9 @@ class SettingsScreen extends StatelessWidget {
                     const SizedBox(height: 32),
 
                     // ── AI Engine Section ─────────────────────────
-                    const _SectionLabel(text: 'AI ENGINE'),
+                    const _SectionLabel(text: 'SMART AI ENGINE'),
                     const SizedBox(height: 12),
-                    _OllamaHostTile(),
+                    const _AiEngineConfigTile(),
                     const SizedBox(height: 32),
 
                     // ── Account Section ───────────────────────────
@@ -186,19 +186,60 @@ class SettingsScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OLLAMA HOST CONFIGURATOR TILE
+// HYBRID AI CONFIGURATOR TILE
 // ─────────────────────────────────────────────────────────────────────────────
-class _OllamaHostTile extends StatefulWidget {
+class _AiEngineConfigTile extends StatefulWidget {
+  const _AiEngineConfigTile();
+
   @override
-  State<_OllamaHostTile> createState() => _OllamaHostTileState();
+  State<_AiEngineConfigTile> createState() => _AiEngineConfigTileState();
 }
 
-class _OllamaHostTileState extends State<_OllamaHostTile> {
-  bool _testing = false;
-  bool? _lastResult;
+class _AiEngineConfigTileState extends State<_AiEngineConfigTile> {
 
-  Future<void> _editHost() async {
-    final ai  = AiService();
+  void _editGeminiKey() async {
+    final ai = context.read<AiService>();
+    final ctrl = TextEditingController(text: ai.geminiKey);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Gemini API Key', style: AppTheme.h3Style),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Used for high-resolution cloud analysis. Get your key at aistudio.google.com',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              obscureText: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: AppTheme.inputDecoration('Paste API Key here'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await ai.setGeminiKey(result);
+    }
+  }
+
+  void _editOllamaHost() async {
+    final ai = context.read<AiService>();
     final ctrl = TextEditingController(text: ai.ollamaHost);
 
     final result = await showDialog<String>(
@@ -206,190 +247,186 @@ class _OllamaHostTileState extends State<_OllamaHostTile> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Ollama Host IP',
-          style: TextStyle(
-            color: Colors.white, fontWeight: FontWeight.w700,
-            fontFamily: 'SpaceGrotesk',
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Enter the local IP of the machine running Ollama.\n'
-              'Make sure you launched it with:\nOLLAMA_HOST=0.0.0.0 ollama serve',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.55),
-                fontSize: 13, height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: '192.168.1.x',
-                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.07),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ],
+        title: Text('Ollama Host', style: AppTheme.h3Style),
+        content: TextField(
+          controller: ctrl,
+          style: const TextStyle(color: Colors.white),
+          decoration: AppTheme.inputDecoration('e.g. 192.168.1.12'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textTertiary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
         ],
       ),
     );
 
-    if (result != null && result.isNotEmpty) {
+    if (result != null) {
       await ai.setOllamaHost(result);
-      setState(() => _lastResult = null);
     }
-  }
-
-  Future<void> _testConnection() async {
-    setState(() { _testing = true; _lastResult = null; });
-    final ok = await AiService().testConnection();
-    setState(() { _testing = false; _lastResult = ok; });
   }
 
   @override
   Widget build(BuildContext context) {
     final ai = context.watch<AiService>();
 
-    Color statusColor = Colors.white38;
-    IconData statusIcon = Icons.radio_button_unchecked;
-    if (_lastResult == true)  { statusColor = AppColors.success; statusIcon = Icons.check_circle_rounded; }
-    if (_lastResult == false) { statusColor = AppColors.error;   statusIcon = Icons.cancel_rounded; }
-
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppTheme.glassDecoration(opacity: 0.05, radius: 20),
+      padding: const EdgeInsets.all(24),
+      decoration: AppTheme.glassDecoration(opacity: 0.1),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.psychology_rounded, color: AppColors.primary, size: 22),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'OLLAMA AI SERVER',
-                      style: TextStyle(
-                        color: Colors.white, fontSize: 12,
-                        fontWeight: FontWeight.w900, letterSpacing: 1,
-                        fontFamily: 'SpaceGrotesk',
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${ai.ollamaHost}:11434  ·  qwen3-vl:2b',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+              const Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 22),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'INTEGRATED AI',
+                  style: TextStyle(
+                    color: Colors.white, fontSize: 12,
+                    fontWeight: FontWeight.w900, letterSpacing: 1.5,
+                  ),
                 ),
               ),
-              if (_testing)
-                const SizedBox(
-                  width: 18, height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                )
-              else
-                Icon(statusIcon, color: statusColor, size: 18),
+              _ModeBadge(mode: ai.aiMode),
             ],
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniButton(
-                  label: 'CHANGE HOST',
-                  icon: Icons.edit_rounded,
-                  onTap: _editHost,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MiniButton(
-                  label: 'TEST',
-                  icon: Icons.wifi_tethering_rounded,
-                  onTap: _testing ? null : _testConnection,
-                  primary: true,
-                ),
-              ),
-            ],
+          const SizedBox(height: 24),
+          
+          // MODE SELECTOR
+          const _SubLabel(text: 'INTELLIGENCE MODE'),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _ModeChip(label: 'AUTO', value: 'auto', current: ai.aiMode),
+                _ModeChip(label: 'CLOUD', value: 'cloud', current: ai.aiMode),
+                _ModeChip(label: 'OFFLINE', value: 'offline', current: ai.aiMode),
+                _ModeChip(label: 'LOCAL', value: 'local', current: ai.aiMode),
+              ],
+            ),
           ),
+          
+          const SizedBox(height: 24),
+          const Divider(color: Colors.white10),
+          const SizedBox(height: 16),
+
+          // GEMINI CONFIG (Always show for cloud/auto)
+          if (ai.aiMode == 'auto' || ai.aiMode == 'cloud') ...[
+            _ConfigRow(
+              label: 'GEMINI CLOUD',
+              value: ai.geminiKey.isEmpty ? 'NOT SET' : '••••••••••••',
+              icon: Icons.cloud_done_rounded,
+              onTap: _editGeminiKey,
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // OLLAMA CONFIG (Show for local)
+          if (ai.aiMode == 'local' || ai.aiMode == 'auto') ...[
+            _ConfigRow(
+              label: 'OLLAMA SERVER',
+              value: ai.ollamaHost,
+              icon: Icons.developer_board_rounded,
+              onTap: _editOllamaHost,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _MiniButton extends StatelessWidget {
-  final String label;
+class _ModeChip extends StatelessWidget {
+  final String label, value, current;
+  const _ModeChip({required this.label, required this.value, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = value == current;
+    return GestureDetector(
+      onTap: () => context.read<AiService>().setAiMode(value),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.primary : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: active ? AppColors.primary : Colors.white10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? Colors.black : Colors.white70,
+            fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfigRow extends StatelessWidget {
+  final String label, value;
   final IconData icon;
-  final VoidCallback? onTap;
-  final bool primary;
-  const _MiniButton({required this.label, required this.icon, this.onTap, this.primary = false});
+  final VoidCallback onTap;
+  const _ConfigRow({required this.label, required this.value, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: primary
-              ? AppColors.primary.withValues(alpha: 0.15)
-              : Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: primary
-                ? AppColors.primary.withValues(alpha: 0.4)
-                : Colors.white.withValues(alpha: 0.08),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 14,
-                color: primary ? AppColors.primary : Colors.white.withValues(alpha: 0.5)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: primary ? AppColors.primary : Colors.white.withValues(alpha: 0.6),
-                fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1,
-              ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.white38),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.white30, fontSize: 9, fontWeight: FontWeight.w800)),
+                Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+              ],
             ),
-          ],
-        ),
+          ),
+          const Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
+        ],
       ),
+    );
+  }
+}
+
+class _ModeBadge extends StatelessWidget {
+  final String mode;
+  const _ModeBadge({required this.mode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+      ),
+      child: Text(
+        mode.toUpperCase(),
+        style: const TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
+      ),
+    );
+  }
+}
+
+class _SubLabel extends StatelessWidget {
+  final String text;
+  const _SubLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(color: Colors.white24, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1),
     );
   }
 }

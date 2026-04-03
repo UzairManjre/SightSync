@@ -1,19 +1,25 @@
+import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ml_kit_service.dart';
 import 'vision_log_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIGURATION KEYS
 // ─────────────────────────────────────────────────────────────────────────────
 const String _kPrefOllamaHost = 'ai_ollama_host';
-const String _kDefaultHost    = '192.168.1.12'; // Mac's LAN IP running Ollama
-const int    _kOllamaPort     = 11434;
-const String _kModel          = 'qwen3-vl:2b';
+const String _kPrefGeminiKey   = 'ai_gemini_key';
+const String _kPrefAiMode      = 'ai_mode'; // 'auto', 'cloud', 'offline', 'local'
+const String _kDefaultHost     = '192.168.1.12';
+const int    _kOllamaPort      = 11434;
+const String _kOllamaModel      = 'qwen3-vl:2b';
+const String _kGeminiModel      = 'gemini-1.5-flash';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI RESULT
@@ -43,18 +49,27 @@ class AiService extends ChangeNotifier {
   AiService._internal();
 
   final FlutterTts _tts = FlutterTts();
-  bool _isBusy   = false;
-  bool _speaking = false;
+  final MLKitService _mlKit = MLKitService();
+  
+  bool _isBusy       = false;
+  bool _speaking     = false;
   String _ollamaHost = _kDefaultHost;
+  String _geminiKey  = '';
+  String _aiMode     = 'offline'; // Force offline by default
+  String _activeEngine = 'On-Device AI';
 
-  bool   get isBusy     => _isBusy;
-  String get ollamaHost => _ollamaHost;
+  bool   get isBusy       => _isBusy;
+  String get ollamaHost   => _ollamaHost;
+  String get geminiKey    => _geminiKey;
+  String get aiMode       => _aiMode;
+  String get activeEngine => _activeEngine;
 
   // ── Startup ────────────────────────────────────────────────────────────────
   Future<void> init() async {
-    // Load persisted host
     final prefs = await SharedPreferences.getInstance();
     _ollamaHost = prefs.getString(_kPrefOllamaHost) ?? _kDefaultHost;
+    _geminiKey  = prefs.getString(_kPrefGeminiKey)   ?? '';
+    _aiMode     = prefs.getString(_kPrefAiMode)      ?? 'offline';
 
     // TTS setup
     await _tts.setLanguage('en-US');
@@ -63,7 +78,21 @@ class AiService extends ChangeNotifier {
     await _tts.setPitch(1.0);
     _tts.setCompletionHandler(() => _speaking = false);
 
-    debugPrint('[AI] Ready — Ollama @ $_ollamaHost:$_kOllamaPort — model: $_kModel');
+    debugPrint('[AI] Initialized — Mode: $_aiMode — Ollama: $_ollamaHost');
+  }
+
+  Future<void> setAiMode(String mode) async {
+    _aiMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefAiMode, mode);
+    notifyListeners();
+  }
+
+  Future<void> setGeminiKey(String key) async {
+    _geminiKey = key.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrefGeminiKey, _geminiKey);
+    notifyListeners();
   }
 
   /// Update the Ollama host at runtime and persist it.
@@ -87,7 +116,7 @@ class AiService extends ChangeNotifier {
   }
 
   // ── Core Ollama vision call ────────────────────────────────────────────────
-  Future<String> _callVision({
+  Future<String> _callOllama({
     required Uint8List imageBytes,
     required String systemPrompt,
     required String userPrompt,
@@ -97,25 +126,17 @@ class AiService extends ChangeNotifier {
     final b64  = base64Encode(imageBytes);
 
     final body = jsonEncode({
-      'model':  _kModel,
-      'think':  false,        // ← kills Qwen3 chain-of-thought tokens
+      'model':  _kOllamaModel,
+      'think':  false,
       'stream': false,
       'messages': [
-        {
-          'role':    'system',
-          'content': systemPrompt,
-        },
-        {
-          'role':    'user',
-          'content': userPrompt,
-          'images':  [b64],
-        },
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': userPrompt, 'images': [b64]},
       ],
       'options': {
-        'temperature':    0.1,   // near-deterministic
-        'top_p':          0.8,   // narrow candidate pool
-        'repeat_penalty': 1.1,   // stops looping
-        'num_predict':    180,   // hard output length cap
+        'temperature': 0.1,
+        'top_p': 0.8,
+        'repeat_penalty': 1.1,
       },
     });
 
@@ -123,15 +144,9 @@ class AiService extends ChangeNotifier {
         .post(url, headers: {'Content-Type': 'application/json'}, body: body)
         .timeout(Duration(seconds: timeoutSeconds));
 
-    if (resp.statusCode != 200) {
-      throw Exception('Ollama HTTP ${resp.statusCode}: ${resp.body}');
-    }
-
-    final data    = jsonDecode(resp.body) as Map<String, dynamic>;
-    final content = (data['message']?['content'] as String? ?? '').trim();
-
-    // Belt-and-suspenders: strip any leaked <think>…</think> tokens
-    return _strip(content);
+    if (resp.statusCode != 200) throw Exception('Ollama error: ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return _strip(data['message']?['content'] ?? '');
   }
 
   String _strip(String raw) =>
@@ -228,7 +243,7 @@ class AiService extends ChangeNotifier {
             'If no person is visible say: No person detected.',
       );
 
-  // ── Internal runner ───────────────────────────────────────────────────────
+  // ── Smart Dispatcher ───────────────────────────────────────────────────────
   Future<AiResult> _run({
     required String featureName,
     required Uint8List imageBytes,
@@ -239,7 +254,7 @@ class AiService extends ChangeNotifier {
     if (_isBusy) {
       return const AiResult(
         featureName: 'Busy',
-        output: 'Another feature is already processing. Please wait.',
+        output: 'Processing another feature...',
         latencyMs: 0,
       );
     }
@@ -247,27 +262,36 @@ class AiService extends ChangeNotifier {
     _isBusy = true;
     notifyListeners();
 
-    final sw     = Stopwatch()..start();
-    String  out  = '';
+    final sw    = Stopwatch()..start();
+    String out  = '';
     String? err;
 
     try {
-      out = await _callVision(
-        imageBytes:   imageBytes,
-        systemPrompt: systemPrompt,
-        userPrompt:   userPrompt,
-      );
-      if (out.isEmpty) out = 'No response received from AI.';
+      // 1. Determine Engine (Simplified for Zero-Config)
+      // We force 'offline' (On-Device) unless the user has explicitly set 'local' (Ollama)
+      
+      if (_aiMode == 'local') {
+        _activeEngine = 'Local Server';
+        out = await _callOllama(imageBytes: imageBytes, systemPrompt: systemPrompt, userPrompt: userPrompt);
+      } else {
+        // DEFAULT: Use the model inside the app (ML Kit)
+        _activeEngine = 'On-Device AI';
+        final tmpFile = await _saveTmp(imageBytes);
+        if (featureName.contains('Text')) {
+          out = await _mlKit.readText(tmpFile);
+        } else if (featureName.contains('Currency')) {
+          out = await _mlKit.detectCurrency(tmpFile);
+        } else {
+          out = await _mlKit.describeScene(tmpFile);
+        }
+      }
 
       await speak(out);
       await logService.addLog(featureName: featureName, aiOutput: out);
-    } on TimeoutException {
-      err = 'AI timed out. Check that Ollama is reachable on $_ollamaHost.';
-      await speak('Sorry, the AI timed out. Please check your network.');
     } catch (e) {
       err = e.toString();
-      debugPrint('[AI] $_featureName error: $e');
-      await speak('Sorry, the AI encountered an error.');
+      debugPrint('[AI] Error in $_activeEngine: $e');
+      await speak('Analysis failed. Check your settings.');
     } finally {
       sw.stop();
       _isBusy = false;
@@ -280,6 +304,13 @@ class AiService extends ChangeNotifier {
       error:       err,
       latencyMs:   sw.elapsedMilliseconds,
     );
+  }
+
+  Future<File> _saveTmp(Uint8List bytes) async {
+    final path = '${Directory.systemTemp.path}/ai_frame.jpg';
+    final file = File(path);
+    await file.writeAsBytes(bytes);
+    return file;
   }
 
   String get _featureName => 'AiService'; // internal label

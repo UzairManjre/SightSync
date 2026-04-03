@@ -109,8 +109,14 @@ class _MainVisionHUDState extends State<MainVisionHUD> {
                   ),
                 ),
               ),
-              const SizedBox(height: 10),
-              _StatusBadge(isConnected: isConnected, ble: ble),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  _StatusBadge(isConnected: isConnected, ble: ble),
+                  const SizedBox(width: 8),
+                  _AiStatusBadge(ai: context.watch<AiService>()),
+                ],
+              ),
             ],
             ),
           ),
@@ -166,6 +172,55 @@ class _MainVisionHUDState extends State<MainVisionHUD> {
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS BADGE
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// AI STATUS BADGE
+// ─────────────────────────────────────────────────────────────────────────────
+class _AiStatusBadge extends StatelessWidget {
+  final AiService ai;
+  const _AiStatusBadge({required this.ai});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color = AppColors.primary;
+    IconData icon = Icons.cloud_queue_rounded;
+    String label = ai.activeEngine;
+
+    if (label == 'Offline AI') {
+      color = Colors.amber;
+      icon = Icons.bolt_rounded;
+    } else if (label == 'Ollama') {
+      color = AppColors.secondary;
+      icon = Icons.terminal_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 10),
+          const SizedBox(width: 6),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
+              fontFamily: 'SpaceGrotesk',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   final bool isConnected;
   final BleService ble;
