@@ -7,7 +7,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:sightSync/main.dart';
+import 'package:sightsync/main.dart';
+import 'package:sightsync/utils/theme.dart';
 
 void main() {
   testWidgets('SightSync app smoke test', (WidgetTester tester) async {

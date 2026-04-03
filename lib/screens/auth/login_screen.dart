@@ -1,392 +1,217 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../services/auth_service.dart';
-import '../../services/ble_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/theme.dart';
-import '../../utils/size_config.dart';
+import '../../widgets/ambient_background.dart';
+import '../../widgets/aesthetic_button.dart';
 import '../onboarding/onboarding_screens.dart';
-import '../dashboard/dashboard_screen.dart';
-import '../../models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
-  final bool isLogin;
-
-  const LoginScreen({super.key, this.isLogin = true});
+  final bool initialIsSignUp;
+  const LoginScreen({super.key, this.initialIsSignUp = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  late bool _isLogin;
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
+  final _emailCtl = TextEditingController();
+  final _passCtl  = TextEditingController();
+  final _nameCtl  = TextEditingController();
+  
+  bool _isSignUp  = false;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _isLogin = widget.isLogin;
+    _isSignUp = widget.initialIsSignUp;
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _nameController.dispose();
-    super.dispose();
-  }
+  Future<void> _submit() async {
+    if (_emailCtl.text.isEmpty || _passCtl.text.isEmpty) return;
+    if (_isSignUp && _nameCtl.text.isEmpty) return;
 
-  Future<void> _handleAuth() async {
     setState(() => _isLoading = true);
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
-    final fullName = _nameController.text.trim();
-
     try {
-      UserModel? user;
-      if (_isLogin) {
-        user = await authService.login(email, password);
+      if (_isSignUp) {
+        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailCtl.text.trim(),
+          password: _passCtl.text.trim(),
+        );
+        await cred.user?.updateDisplayName(_nameCtl.text.trim());
       } else {
-        user = await authService.signUp(email, password, fullName);
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailCtl.text.trim(),
+          password: _passCtl.text.trim(),
+        );
       }
-
       if (mounted) {
-        if (user != null) {
-          // Check if email is verified in Firebase
-          final firebaseUser = authService.firebaseUser;
-          if (firebaseUser != null && !firebaseUser.emailVerified) {
-            setState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Please verify your email address.'),
-                backgroundColor: AppColors.error,
-                action: SnackBarAction(
-                  label: 'Resend',
-                  onPressed: () => authService.resendVerificationEmail(email),
-                ),
-              ),
-            );
-            return;
-          }
-
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) =>
-                  _isLogin ? const DashboardScreen() : const OnboardingScreen(),
-            ),
-          );
-        }
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 4),
-          ),
+          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _handleDeviceActivation() {
-    final bleService = context.read<BleService>();
-
-    if (bleService.leftDevice != null || bleService.rightDevice != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Microphone Activated. Listening..."),
-          backgroundColor: AppColors.success,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please create an account to pair your device."),
-          backgroundColor: AppColors.error,
-          duration: Duration(seconds: 2),
-        ),
-      );
-
-      if (_isLogin) {
-        setState(() {
-          _isLogin = false;
-          _emailController.clear();
-          _passwordController.clear();
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-
-    final bleService = context.watch<BleService>();
-    final isConnected = bleService.leftDevice != null || bleService.rightDevice != null;
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: true,
-      body: Stack(
-        children: [
-          // 1. Background Gradient
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: SizeConfig.h(420),
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [AppColors.authGradientTop, Colors.black],
-                ),
-              ),
-            ),
-          ),
-
-          // 2. Content
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(40)),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).padding.top -
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                child: IntrinsicHeight(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: SizeConfig.h(20)),
-
-                      // Audio Wave Button
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          onTap: _handleDeviceActivation,
-                          child: Container(
-                            width: SizeConfig.w(48),
-                            height: SizeConfig.w(48),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isConnected
-                                  ? AppColors.success.withOpacity(0.1)
-                                  : Colors.white.withOpacity(0.05),
-                              border: Border.all(
-                                color: isConnected
-                                    ? AppColors.success.withOpacity(0.5)
-                                    : Colors.white24,
-                                width: 1,
+      body: AmbientBackground(
+        useImage: true,
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween, // Ensures full screen coverage
+                      children: [
+                        // --- Top Section ---
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                width: 52, height: 52,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                ),
+                                child: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.white),
                               ),
                             ),
-                            child: Icon(
-                              isConnected ? Icons.mic : Icons.graphic_eq,
-                              color:
-                                  isConnected ? AppColors.success : Colors.white,
-                              size: SizeConfig.sp(24),
+                            const SizedBox(height: 40),
+                            Text(
+                              _isSignUp ? 'Signup' : 'Welcome\nBack',
+                              style: const TextStyle(
+                                color: Colors.white, fontSize: 44,
+                                fontWeight: FontWeight.w800, height: 1.1,
+                                letterSpacing: -1.5, fontFamily: 'SpaceGrotesk',
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 48),
+
+                            // --- Input Fields ---
+                            if (_isSignUp) ...[
+                              _InputField(label: 'USERNAME', controller: _nameCtl, hint: 'alexsync'),
+                              const SizedBox(height: 24),
+                            ],
+                            
+                            _InputField(label: 'EMAIL ADDRESS', controller: _emailCtl, hint: 'alex@example.com'),
+                            const SizedBox(height: 24),
+                            _InputField(label: 'PASSWORD', controller: _passCtl, hint: '••••••••', isObscure: true),
+                          ],
                         ),
-                      ),
 
-                      const Spacer(flex: 2),
-
-                      // Title
-                      Text(
-                        _isLogin
-                            ? "Let's Get\nYou In"
-                            : "Let's Get You\nSet Up",
-                        style: TextStyle(
-                          fontSize: SizeConfig.sp(48),
-                          height: 1.1,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: -1,
+                        // --- Bottom Section ---
+                        Column(
+                          children: [
+                            const SizedBox(height: 48),
+                            AestheticButton(
+                              onTap: _submit,
+                              isLoading: _isLoading,
+                              isGlass: true,
+                              label: _isSignUp ? 'Signup' : 'Welcome Back',
+                            ),
+                            const SizedBox(height: 24),
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _isSignUp = !_isSignUp;
+                                _nameCtl.clear();
+                              }),
+                              child: Text(
+                                _isSignUp ? 'Already have an account? Login' : "Don't have an account? Signup",
+                                style: const TextStyle(
+                                  color: AppColors.primary, 
+                                  fontWeight: FontWeight.w800, 
+                                  fontSize: 14,
+                                  fontFamily: 'SpaceGrotesk',
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
                         ),
-                      ),
-
-                      SizedBox(height: SizeConfig.h(50)),
-
-                      // Inputs
-                      if (!_isLogin) ...[
-                        _buildAuthInputField(
-                            controller: _nameController, hint: "full name"),
-                        SizedBox(height: SizeConfig.h(20)),
                       ],
-
-                      _buildAuthInputField(
-                          controller: _emailController, hint: "email"),
-                      SizedBox(height: SizeConfig.h(20)),
-                      _buildAuthInputField(
-                          controller: _passwordController,
-                          hint: "password",
-                          isPassword: true),
-
-                      SizedBox(height: SizeConfig.h(36)),
-
-                      // Footer Actions
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          if (_isLogin)
-                            Flexible(
-                              child: TextButton(
-                                onPressed: () {},
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  alignment: Alignment.centerLeft,
-                                ),
-                                child: Text(
-                                  "Forgot Your Password?",
-                                  style: TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: SizeConfig.sp(13),
-                                    fontWeight: FontWeight.w300,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            )
-                          else
-                            const Spacer(),
-
-                          SizedBox(width: SizeConfig.w(8)),
-                          _buildContinueButton(),
-                        ],
-                      ),
-
-                      const Spacer(flex: 3),
-
-                      // Switch Link
-                      Center(
-                        child: TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _isLogin = !_isLogin;
-                            });
-                          },
-                          child: RichText(
-                            text: TextSpan(
-                              text: _isLogin
-                                  ? "New here? "
-                                  : "Already have an account? ",
-                              style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: SizeConfig.sp(13)),
-                              children: [
-                                TextSpan(
-                                  text: _isLogin ? "Create Account" : "Login",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(height: SizeConfig.h(20)),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthInputField({
-    required TextEditingController controller,
-    required String hint,
-    bool isPassword = false,
-  }) {
-    return Container(
-      height: SizeConfig.h(60),
-      decoration: BoxDecoration(
-        color: const Color(0xFF030712).withOpacity(0.8),
-        borderRadius: BorderRadius.circular(SizeConfig.w(30)),
-        border: Border.all(
-          color: AppColors.authGradientTop.withOpacity(0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
-      ),
-      child: Center(
-        child: TextField(
-          controller: controller,
-          obscureText: isPassword,
-          style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(16)),
-          cursorColor: AppColors.authGradientTop,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              color: Colors.white.withOpacity(0.2),
-              fontSize: SizeConfig.sp(16),
-              fontWeight: FontWeight.w300,
-            ),
-            border: InputBorder.none,
-            contentPadding:
-                EdgeInsets.symmetric(horizontal: SizeConfig.w(24)),
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildContinueButton() {
-    return InkWell(
-      onTap: _isLoading ? null : _handleAuth,
-      borderRadius: BorderRadius.circular(SizeConfig.w(30)),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.w(28),
-          vertical: SizeConfig.h(12),
+class _InputField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final bool isObscure;
+
+  const _InputField({
+    required this.label,
+    required this.hint,
+    required this.controller,
+    this.isObscure = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5), // Brightened for better visibility
+            fontSize: 10, 
+            fontWeight: FontWeight.w900, 
+            letterSpacing: 2,
+            fontFamily: 'SpaceGrotesk',
+          ),
         ),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(SizeConfig.w(30)),
-          border: Border.all(color: Colors.white70, width: 1),
+        const SizedBox(height: 12),
+        Container(
+          height: 60,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: TextField(
+            controller: controller,
+            obscureText: isObscure,
+            cursorColor: AppColors.primary,
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.12), fontSize: 15),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              border: InputBorder.none,
+            ),
+          ),
         ),
-        child: _isLoading
-            ? SizedBox(
-                width: SizeConfig.w(20),
-                height: SizeConfig.w(20),
-                child: const CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              )
-            : Text(
-                "Continue",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: SizeConfig.sp(15),
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-      ),
+      ],
     );
   }
 }

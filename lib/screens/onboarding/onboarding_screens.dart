@@ -1,767 +1,540 @@
-// lib/screens/onboarding/onboarding_screens.dart
-import 'dart:async';
-import 'dart:math';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'dart:math' as math;
 import '../../services/ble_service.dart';
 import '../../utils/theme.dart';
-import '../../utils/size_config.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../../widgets/ambient_background.dart';
+import 'user_guide_screen.dart';
 
-const String backgroundImageUrl = '/mnt/data/6c49ffa0-be1d-4a9b-9c13-264460091105.png';
-const String glassesImageUrl = '/mnt/data/93a24752-c1a5-4f28-8408-48b61dc2eb01.png';
-
+/// ─────────────────────────────────────────────────────────────────────────────
+///  ONBOARDING CONTROLLER
+/// ─────────────────────────────────────────────────────────────────────────────
 class OnboardingScreen extends StatefulWidget {
   final int initialPage;
-
   const OnboardingScreen({super.key, this.initialPage = 0});
+
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  late PageController _pageController;
-  int _currentPage = 0;
+  late final PageController _pc;
+  int _page = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: widget.initialPage);
-    _currentPage = widget.initialPage;
+    _pc = PageController(initialPage: widget.initialPage);
+    _page = widget.initialPage;
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _pc.dispose();
     super.dispose();
   }
 
-  void goToNextPage() {
-    if (_currentPage < 2) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 320), curve: Curves.easeInOut);
+  void _next() {
+    if (_page < 2) {
+      _pc.nextPage(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutQuart,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          // Background Gradient matching the design
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.authGradientTop,
-                    Colors.black,
-                  ],
-                  stops: [0.0, 0.8],
-                ),
-              ),
-            ),
-          ),
-          // Radial overlay for depth
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(-0.5, -0.5),
-                  radius: 1.5,
-                  colors: [
-                    Colors.white.withOpacity(0.1),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Column(
+      body: AmbientBackground(
+        useImage: true,
+        child: Stack(
+          children: [
+            PageView(
+              controller: _pc,
+              onPageChanged: (i) => setState(() => _page = i),
+              physics: const NeverScrollableScrollPhysics(),
               children: [
-                Expanded(
-                  child: PageView(
-                    controller: _pageController,
-                    onPageChanged: (i) => setState(() => _currentPage = i),
-                    physics: const NeverScrollableScrollPhysics(), // Lock swipe, force interaction
-                    children: [
-                      DesignerIntroPage(onSlideComplete: goToNextPage),
-                      DesignerConnectPage(),
-                      DesignerButtonTutorialPage(),
-                    ],
-                  ),
-                ),
-                // Page indicators
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      3,
-                          (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: _currentPage == index ? 28 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(_currentPage == index ? 0.95 : 0.22),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _WelcomePage(onNext: _next),
+                _DeviceSelectionPage(onNext: _next),
+                const UserGuideScreen(),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
-/// A draggable slide-to-advance control.
-/// When user slides knob past 80% it calls onSlideComplete.
-class SlideToAdvance extends StatefulWidget {
-  final VoidCallback onSlideComplete;
-  final String label;
-  const SlideToAdvance({required this.onSlideComplete, required this.label, super.key});
-
-  @override
-  State<SlideToAdvance> createState() => _SlideToAdvanceState();
-}
-
-class _SlideToAdvanceState extends State<SlideToAdvance> with SingleTickerProviderStateMixin {
-  double _dx = 0;
-  bool _completed = false;
-  late double _maxDx;
-  late AnimationController _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-  }
-
-  @override
-  void dispose() {
-    _anim.dispose();
-    super.dispose();
-  }
-
-  void _onDragUpdate(DragUpdateDetails d) {
-    setState(() {
-      _dx = (_dx + d.delta.dx).clamp(0.0, _maxDx);
-    });
-  }
-
-  void _onDragEnd(DragEndDetails _) {
-    // Threshold 80% of available space
-    if (_dx >= _maxDx * 0.8 && !_completed) {
-      setState(() => _completed = true);
-      widget.onSlideComplete();
-      // animate knob all the way to end
-      setState(() => _dx = _maxDx);
-    } else {
-      // snap back
-      setState(() => _dx = 0);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final fullW = constraints.maxWidth;
-      final knobSize = 56.0;
-      _maxDx = max(0, fullW - knobSize - 8);
-
-      return SizedBox(
-        height: 64,
-        child: Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Container(
-              height: 56,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withOpacity(0.22)),
-                color: Colors.white.withOpacity(0.03),
-              ),
-              alignment: Alignment.center,
+            // Page dots
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(widget.label, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16)),
-                ],
-              ),
-            ),
-            Positioned(
-              left: 4 + _dx,
-              child: GestureDetector(
-                onHorizontalDragUpdate: _onDragUpdate,
-                onHorizontalDragEnd: _onDragEnd,
-                child: Container(
-                  width: knobSize,
-                  height: knobSize,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.98),
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 6)],
-                  ),
-                  child: const Icon(Icons.arrow_forward, color: Colors.black87),
-                ),
+                children: List.generate(3, (i) {
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 400),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: _page == i ? 24 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _page == i ? AppColors.primary : Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
               ),
             ),
           ],
         ),
-      );
-    });
-  }
-}
-
-class DesignerIntroPage extends StatelessWidget {
-  final VoidCallback onSlideComplete;
-  const DesignerIntroPage({required this.onSlideComplete, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        SizeConfig.w(28), SizeConfig.h(60), SizeConfig.w(28), SizeConfig.h(36)
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Spacer(),
-          Text(
-            'SightSync is ready\nto guide you',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: SizeConfig.sp(42),
-              height: 1.1,
-              fontWeight: FontWeight.w300,
-              letterSpacing: -1.0,
-            ),
-          ),
-          SizedBox(height: SizeConfig.h(24)),
-          Text(
-            'Follow the on-screen steps or use voice guidance\nto complete your setup.',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: SizeConfig.sp(15),
-              height: 1.5,
-            ),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              Container(
-                width: SizeConfig.w(54),
-                height: SizeConfig.w(54),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(0.25)),
-                  color: Colors.white.withOpacity(0.05),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.graphic_eq,
-                    color: Colors.white.withOpacity(0.9),
-                    size: SizeConfig.sp(24),
-                  ),
-                ),
-              ),
-              SizedBox(width: SizeConfig.w(16)),
-              Expanded(
-                child: SlideToAdvance(onSlideComplete: onSlideComplete, label: 'Start'),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
 }
 
-class DesignerConnectPage extends StatefulWidget {
-  const DesignerConnectPage({super.key});
+/// ─────────────────────────────────────────────────────────────────────────────
+///  PAGE 1 — Welcome / Ready to guide you
+/// ─────────────────────────────────────────────────────────────────────────────
+class _WelcomePage extends StatelessWidget {
+  final VoidCallback onNext;
+  const _WelcomePage({required this.onNext});
+
   @override
-  State<DesignerConnectPage> createState() => _DesignerConnectPageState();
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            // Illustration placeholder — eye icon in a glowing circle
+            Center(
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                  border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.1),
+                      blurRadius: 30,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.remove_red_eye_outlined, size: 48, color: AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 48),
+
+            const Text(
+              "You're all set,\nwe're ready to\nguide you.",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+                letterSpacing: -1.5,
+                fontFamily: 'SpaceGrotesk',
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'SightSync uses AI and wearable sensors to help you understand the world.',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 16,
+                height: 1.5,
+              ),
+            ),
+
+            const Spacer(),
+
+            // Next button
+            SizedBox(
+              width: double.infinity,
+              height: 64,
+              child: ElevatedButton(
+                onPressed: onNext,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white.withOpacity(0.06),
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                ),
+                child: const Text('Pair my device', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
+              ),
+            ),
+            const SizedBox(height: 40), // Spacing for dots
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _DesignerConnectPageState extends State<DesignerConnectPage> {
-  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
-  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+/// ─────────────────────────────────────────────────────────────────────────────
+///  PAGE 2 — Device Selection (BLE list)
+/// ─────────────────────────────────────────────────────────────────────────────
+class _DeviceSelectionPage extends StatefulWidget {
+  final VoidCallback onNext;
+  const _DeviceSelectionPage({required this.onNext});
 
+  @override
+  State<_DeviceSelectionPage> createState() => _DeviceSelectionPageState();
+}
+
+class _DeviceSelectionPageState extends State<_DeviceSelectionPage> {
   @override
   void initState() {
     super.initState();
-    _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
-      if (mounted) setState(() => _adapterState = state);
-    });
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final bleService = context.read<BleService>();
-      await bleService.init();
-      bleService.startScan();
+      final ble = context.read<BleService>();
+      await ble.init();
+      ble.startScan();
     });
   }
 
   @override
-  void dispose() {
-    _adapterStateSubscription?.cancel();
-    super.dispose();
-  }
+  Widget build(BuildContext context) {
+    final ble = context.watch<BleService>();
 
-  Future<void> _onConnectGlasses(BuildContext context, List<ScanResult> results) async {
-    final bleService = context.read<BleService>();
-    
-    // Logic: Find SightSync devices or XIAO modules
-    // For now, let's look for anything that looks like our modules
-    final sightSyncDevices = results.where((r) => 
-      r.device.platformName.contains('SightSync') || 
-      r.device.platformName.contains('XIAO') ||
-      r.device.name.contains('SightSync')
-    ).toList();
-
-    // TEMPORARY TEST: Change < 2 to < 1
-    if (sightSyncDevices.length < 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please make sure the arm module is powered on.'))
-      );
-      return;
-    }
-
-    // Identitfy left/right (this is a placeholder logic, usually based on suffix -L/-R)
-    final d1 = sightSyncDevices[0].device;
-    // TEST ONLY: Comment out right arm requirement
-    // final d2 = sightSyncDevices[1].device;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const CircularProgressIndicator(color: Colors.white),
+            const Text(
+              'Select your\ndevice',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+                letterSpacing: -1.2,
+                fontFamily: 'SpaceGrotesk',
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Ensure your SightSync module is nearby.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            ),
+            const SizedBox(height: 32),
+
+            // Scanning indicator
+            Row(
+              children: [
+                const SizedBox(
+                  width: 12, height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'SCANNING...',
+                  style: TextStyle(color: AppColors.primary.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 2),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Device list
+            Expanded(
+              child: StreamBuilder<List<ScanResult>>(
+                stream: ble.scanResults,
+                builder: (context, snap) {
+                  final results = (snap.data ?? []).where((r) {
+                    final name = r.device.platformName.toLowerCase();
+                    return name.contains('sightsync');
+                  }).toList();
+
+                  if (results.isEmpty) {
+                    return Center(
+                      child: Text('SEARCHING...',
+                          style: TextStyle(color: Colors.white.withOpacity(0.15), fontSize: 13, letterSpacing: 3, fontWeight: FontWeight.bold)),
+                    );
+                  }
+                  return ListView.separated(
+                    itemCount: results.length,
+                    physics: const BouncingScrollPhysics(),
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (ctx, i) {
+                      final r = results[i];
+                      final name = r.device.platformName.isNotEmpty ? r.device.platformName : 'SIGHTSYNC_NODE';
+                      return _DeviceListTile(
+                        name: name,
+                        onTap: () async {
+                          final pin = (100000 + math.Random().nextInt(899999)).toString();
+                          
+                          // 1. Start connecting
+                          try {
+                            // Show a quick snackbar or just wait (ux is better if we go to a connecting screen)
+                            await ble.connectLeft(r.device);
+                            
+                            // 2. Once connected, send PIN to the chip
+                            await ble.writeCommand({'type': 'pairing_pin', 'pin': pin});
+
+                            if (!mounted) return;
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PairingCodePage(
+                                  deviceName: name,
+                                  pin: pin,
+                                  onConfirm: () {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const UserGuideScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to connect: $e'))
+                            );
+                          }
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+
             const SizedBox(height: 20),
-            Text('Syncing Arms...', style: TextStyle(color: Colors.white.withOpacity(0.9))),
+            Center(
+              child: TextButton(
+                onPressed: widget.onNext,
+                child: const Text(
+                  'Skip for now',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 40), // Spacing for dots
           ],
         ),
       ),
     );
-
-    try {
-      await bleService.stopScan();
-      // Connect to left arm only for testing
-      await Future.wait([
-        bleService.connectLeft(d1),
-        // TEST ONLY: Comment out right arm connection
-        // bleService.connectRight(d2),
-      ]);
-
-      if (context.mounted) {
-        Navigator.of(context).pop(); // pop dialog
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => PairingConfirmPage(deviceName: 'SightSync Glasses')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Connection failed: $e'))
-        );
-      }
-    }
   }
+}
+
+class _DeviceListTile extends StatelessWidget {
+  final String name;
+  final VoidCallback onTap;
+  const _DeviceListTile({required this.name, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final bleService = context.watch<BleService>();
-    SizeConfig.init(context);
-
-    return Column(
-      children: [
-        const Spacer(),
-        Center(
-          child: Container(
-            width: SizeConfig.w(320),
-            height: SizeConfig.w(320),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF0F1535).withOpacity(0.4),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 30,
-                  spreadRadius: 10,
-                )
-              ],
-            ),
-            child: ClipOval(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.bluetooth, size: SizeConfig.w(80), color: Colors.white.withOpacity(0.9)),
-                    SizedBox(height: SizeConfig.h(20)),
-                    Text(
-                      'Make sure Bluetooth is turned on',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: SizeConfig.sp(14)),
-                    ),
-                    SizedBox(height: SizeConfig.h(12)),
-                    Container(width: SizeConfig.w(180), height: 1, color: Colors.white.withOpacity(0.1)),
-                    SizedBox(height: SizeConfig.h(12)),
-                    Text(
-                      'Select your device',
-                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: SizeConfig.sp(12)),
-                    ),
-                    SizedBox(height: SizeConfig.h(10)),
-                    StreamBuilder<List<ScanResult>>(
-                      stream: bleService.scanResults,
-                      builder: (context, snapshot) {
-                        final results = snapshot.data ?? [];
-                        
-                        // DEBUG: Print all discovered devices to Xcode console
-                        if (results.isNotEmpty) {
-                          print("--- BLE SCAN FILTER ---");
-                          for (var r in results) {
-                            print("Found: PlatformName: '${r.device.platformName}', Name: '${r.device.name}', ID: ${r.device.remoteId}");
-                          }
-                          print("-----------------------");
-                        }
-
-                        final sightSyncFound = results.any((r) => 
-                          r.device.platformName.contains('SightSync') || 
-                          r.device.platformName.contains('XIAO') ||
-                          r.device.name.contains('SightSync')
-                        );
-
-                        if (_adapterState != BluetoothAdapterState.on) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text('Bluetooth is OFF.', style: TextStyle(color: AppColors.error, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.bold)),
-                          );
-                        }
-
-                        return Column(
-                          children: [
-                            if (sightSyncFound)
-                              GestureDetector(
-                                onTap: () => _onConnectGlasses(context, results),
-                                child: Container(
-                                  margin: const EdgeInsets.only(top: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.05),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    'SightSync Glasses',
-                                    style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
-                                  ),
-                                ),
-                              ),
-                            if (!sightSyncFound)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text('Searching...', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: SizeConfig.sp(12))),
-                              ),
-                            // DEBUG LIST
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              height: 120, // scrollable area
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: results.length,
-                                itemBuilder: (context, index) {
-                                  final r = results[index];
-                                  final name = r.device.platformName.isNotEmpty ? r.device.platformName : (r.device.name.isNotEmpty ? r.device.name : 'Unknown');
-                                  return Text(
-                                    "Found: $name", 
-                                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
-                                    textAlign: TextAlign.center,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
-        const Spacer(),
-        Column(
+        child: Row(
           children: [
             Container(
-              width: SizeConfig.w(50),
-              height: SizeConfig.w(50),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
+              width: 44, height: 44,
+              decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.bluetooth, color: AppColors.primary, size: 22),
             ),
-            SizedBox(height: SizeConfig.h(10)),
-            Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12))),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textTertiary, size: 20),
           ],
         ),
-        SizedBox(height: SizeConfig.h(30)),
-      ],
+      ),
     );
   }
 }
 
-class PairingConfirmPage extends StatefulWidget {
+/// ─────────────────────────────────────────────────────────────────────────────
+///  PAIRING CODE PAGE
+/// ─────────────────────────────────────────────────────────────────────────────
+class PairingCodePage extends StatefulWidget {
   final String deviceName;
-  const PairingConfirmPage({required this.deviceName, super.key});
+  final String pin;
+  final VoidCallback onConfirm;
+  const PairingCodePage({required this.deviceName, required this.pin, required this.onConfirm});
 
   @override
-  State<PairingConfirmPage> createState() => _PairingConfirmPageState();
+  State<PairingCodePage> createState() => PairingCodePageState();
 }
 
-class _PairingConfirmPageState extends State<PairingConfirmPage> {
-  final List<String> _codeDigits = ['6', '6', '8', '0', '0', '1'];
+class PairingCodePageState extends State<PairingCodePage> {
+  bool _isConnecting = false;
 
   @override
   Widget build(BuildContext context) {
-    final bleService = context.watch<BleService>();
-    final bothConnected = bleService.leftDevice != null && bleService.rightDevice != null;
-    SizeConfig.init(context);
-
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          SafeArea(
+      body: AmbientBackground(
+        useImage: true,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Spacer(),
-                Center(
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
                   child: Container(
-                    width: SizeConfig.w(320),
-                    height: SizeConfig.w(320),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF0F1535).withOpacity(0.4),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 30,
-                          spreadRadius: 10,
-                        )
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.bluetooth_connected, size: SizeConfig.w(70), color: Colors.blue.shade200),
-                            SizedBox(height: SizeConfig.h(10)),
-                            Text(widget.deviceName, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: SizeConfig.sp(16))),
-                            SizedBox(height: SizeConfig.h(12)),
-                            Container(width: SizeConfig.w(180), height: 1, color: Colors.white.withOpacity(0.1)),
-                            SizedBox(height: SizeConfig.h(12)),
-                            Text('Confirm the pairing code.', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: SizeConfig.sp(14))),
-                            SizedBox(height: SizeConfig.h(20)),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: _codeDigits.map((d) {
-                                return Container(
-                                  margin: EdgeInsets.symmetric(horizontal: SizeConfig.w(4)),
-                                  width: SizeConfig.w(36),
-                                  height: SizeConfig.h(46),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                                  ),
-                                  child: Center(
-                                    child: Text(d, style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(18), fontWeight: FontWeight.w600)),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            SizedBox(height: SizeConfig.h(25)),
-                            GestureDetector(
-                              onTap: bothConnected ? () {
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (_) => const DesignerButtonTutorialPage())
-                                );
-                              } : null,
-                              child: Container(
-                                padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(32), vertical: SizeConfig.h(10)),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withOpacity(bothConnected ? 0.3 : 0.1)),
-                                  color: bothConnected ? Colors.white.withOpacity(0.05) : Colors.transparent,
-                                ),
-                                child: Text(
-                                  'Continue',
-                                  style: TextStyle(
-                                    color: bothConnected ? Colors.white : Colors.white.withOpacity(0.35),
-                                    fontSize: SizeConfig.sp(14),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                    child: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.white),
                   ),
                 ),
-                const Spacer(),
-                Column(
-                  children: [
-                    Container(
-                      width: SizeConfig.w(50),
-                      height: SizeConfig.w(50),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                      ),
-                      child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
-                    ),
-                    SizedBox(height: SizeConfig.h(10)),
-                    Text(
-                      bothConnected ? 'Voice guidance enabled' : 'Waiting for sync...',
-                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12)),
-                    ),
-                  ],
+                const SizedBox(height: 40),
+                Text(
+                  'Confirm PIN',
+                  style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, fontFamily: 'SpaceGrotesk'),
                 ),
-                SizedBox(height: SizeConfig.h(30)),
+                const SizedBox(height: 12),
+                Text('Pairing with ${widget.deviceName}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+                const SizedBox(height: 48),
+
+                // PIN
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: widget.pin.split('').map((d) {
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 5),
+                      width: 44, height: 60,
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                      child: Center(child: Text(d, style: const TextStyle(color: AppColors.primary, fontSize: 26, fontWeight: FontWeight.w800))),
+                    );
+                  }).toList(),
+                ),
+
+                const Spacer(),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: ElevatedButton(
+                    onPressed: _isConnecting ? null : () async {
+                      setState(() => _isConnecting = true);
+                      await Future.delayed(const Duration(seconds: 2));
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        widget.onConfirm();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.06),
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                    ),
+                    child: _isConnecting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('CONFIRM'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+///  PAGE 3 — Button Mapping Tutorial
+/// ─────────────────────────────────────────────────────────────────────────────
+class _ButtonMappingPage extends StatelessWidget {
+  const _ButtonMappingPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'How to use',
+              style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, fontFamily: 'SpaceGrotesk'),
+            ),
+            const SizedBox(height: 12),
+            const Text('Your module has two smart buttons.', style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+            const SizedBox(height: 40),
+
+            _MappingRow(icon: Icons.touch_app_outlined, title: 'Short Press', description: 'Read text and signs.'),
+            const SizedBox(height: 16),
+            _MappingRow(icon: Icons.touch_app, title: 'Long Press', description: 'Describe surroundings.'),
+
+            const Spacer(),
+
+            SizedBox(
+              width: double.infinity,
+              height: 64,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const DashboardScreen()),
+                    (r) => false,
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+                ),
+                child: const Text("LET'S GO", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2)),
+              ),
+            ),
+            const SizedBox(height: 40), // Spacing for dots
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MappingRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  const _MappingRow({required this.icon, required this.title, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.08))),
+      child: Row(
+        children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(14)),
+            child: Icon(icon, color: AppColors.primary, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                const SizedBox(height: 4),
+                Text(description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
               ],
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-
-class DesignerButtonTutorialPage extends StatelessWidget {
-  const DesignerButtonTutorialPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig.init(context);
-
-    return Column(
-      children: [
-        const Spacer(),
-        Center(
-          child: Container(
-            width: SizeConfig.w(320),
-            height: SizeConfig.w(320),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF0F1535).withOpacity(0.4),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 30,
-                  spreadRadius: 10,
-                )
-              ],
-            ),
-            child: ClipOval(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(30)),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.smart_toy_outlined, size: SizeConfig.w(60), color: Colors.blue.shade200),
-                      SizedBox(height: SizeConfig.h(10)),
-                      Text(
-                        'Get to Know Your Button',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: SizeConfig.sp(16), fontWeight: FontWeight.w500),
-                      ),
-                      SizedBox(height: SizeConfig.h(20)),
-                      Row(
-                        children: [
-                          Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle)),
-                          SizedBox(width: 12),
-                          Expanded(child: Text('Single press to read text', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(13)))),
-                        ],
-                      ),
-                      SizedBox(height: SizeConfig.h(12)),
-                      Row(
-                        children: [
-                          Container(width: 24, height: 8, decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(4))),
-                          SizedBox(width: 12),
-                          Expanded(child: Text('Long press to describe scene', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(13)))),
-                        ],
-                      ),
-                      SizedBox(height: SizeConfig.h(30)),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const DashboardScreen()));
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(28), vertical: SizeConfig.h(10)),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withOpacity(0.3)),
-                            color: Colors.white.withOpacity(0.05),
-                          ),
-                          child: Text(
-                            'Setup Complete',
-                            style: TextStyle(color: Colors.white, fontSize: SizeConfig.sp(14), fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        const Spacer(),
-        Column(
-          children: [
-            Container(
-              width: SizeConfig.w(50),
-              height: SizeConfig.w(50),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: Center(child: Icon(Icons.graphic_eq, color: Colors.white.withOpacity(0.9), size: SizeConfig.sp(22))),
-            ),
-            SizedBox(height: SizeConfig.h(10)),
-            Text('Voice guidance enabled', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: SizeConfig.sp(12))),
-          ],
-        ),
-        SizedBox(height: SizeConfig.h(30)),
-      ],
     );
   }
 }

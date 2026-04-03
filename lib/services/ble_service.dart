@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-class BleService {
+class BleService extends ChangeNotifier {
   static final BleService _instance = BleService._internal();
   factory BleService() => _instance;
   BleService._internal();
@@ -12,6 +13,7 @@ class BleService {
   final String serviceUuid = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
   final String commandCharUuid = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
   final String eventCharUuid = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
+  final String ipCharUuid = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
   
   // Standard BLE Battery Service UUIDs
   final String batteryServiceUuid = "180F";
@@ -28,6 +30,13 @@ class BleService {
   BluetoothCharacteristic? leftBatteryChar;
   BluetoothCharacteristic? rightBatteryChar;
 
+  // Camera Settings
+  String? rightDeviceIp;
+  String? leftDeviceIp;
+
+  // Helper: IP from whichever side is available
+  String? get activeDeviceIp => rightDeviceIp ?? leftDeviceIp;
+
   // Stream for Events (Consolidated from both arms)
   final StreamController<Map<String, dynamic>> _eventController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get eventStream => _eventController.stream;
@@ -35,6 +44,16 @@ class BleService {
   // Stream for Battery Levels
   final StreamController<Map<String, int>> _batteryController = StreamController<Map<String, int>>.broadcast();
   Stream<Map<String, int>> get batteryStream => _batteryController.stream;
+
+  // Stream for RSSI (Signal)
+  final StreamController<Map<String, int>> _rssiController = StreamController<Map<String, int>>.broadcast();
+  Stream<Map<String, int>> get rssiStream => _rssiController.stream;
+
+  // Stream for Thermal Status
+  final StreamController<Map<String, String>> _thermalController = StreamController<Map<String, String>>.broadcast();
+  Stream<Map<String, String>> get thermalStream => _thermalController.stream;
+
+  Timer? _rssiTimer;
 
   Future<void> init() async {
     await [
@@ -65,19 +84,21 @@ class BleService {
   Future<void> connectLeft(BluetoothDevice device) async {
     await device.connect();
     leftDevice = device;
+    notifyListeners(); // rebuild UI immediately on connect
     await _discoverServices(device, "left");
   }
 
   Future<void> connectRight(BluetoothDevice device) async {
     await device.connect();
     rightDevice = device;
+    notifyListeners(); // rebuild UI immediately on connect
     await _discoverServices(device, "right");
   }
 
   Future<void> disconnect() async {
     if (leftDevice != null) await leftDevice!.disconnect();
     if (rightDevice != null) await rightDevice!.disconnect();
-    leftDevice = null;
+    leftDevice  = null;
     rightDevice = null;
     leftCommandChar = null;
     rightCommandChar = null;
@@ -85,6 +106,29 @@ class BleService {
     rightEventChar = null;
     leftBatteryChar = null;
     rightBatteryChar = null;
+    rightDeviceIp = null;
+    leftDeviceIp = null;
+    _stopRssiPolling();
+    notifyListeners();
+  }
+
+  void _startRssiPolling() {
+    _rssiTimer?.cancel();
+    _rssiTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (leftDevice != null) {
+        final rssi = await leftDevice!.readRssi();
+        _rssiController.add({"left": rssi});
+      }
+      if (rightDevice != null) {
+        final rssi = await rightDevice!.readRssi();
+        _rssiController.add({"right": rssi});
+      }
+    });
+  }
+
+  void _stopRssiPolling() {
+    _rssiTimer?.cancel();
+    _rssiTimer = null;
   }
 
   Future<void> _discoverServices(BluetoothDevice device, String side) async {
@@ -107,6 +151,29 @@ class BleService {
               rightEventChar = characteristic;
               await _setupNotifications(rightEventChar!, "right");
             }
+          } else if (uuid == ipCharUuid) {
+            // Support IP on whichever arm is actually connected
+            await characteristic.setNotifyValue(true);
+            
+            // Initial read
+            List<int> initialVal = await characteristic.read();
+            if (initialVal.isNotEmpty) {
+              final ip = utf8.decode(initialVal).trim();
+              if (side == "right") rightDeviceIp = ip;
+              else leftDeviceIp = ip;
+              notifyListeners();
+            }
+
+            // Listen for updates
+            characteristic.lastValueStream.listen((val) {
+              if (val.isNotEmpty) {
+                final ip = utf8.decode(val).trim();
+                if (side == "right") rightDeviceIp = ip;
+                else leftDeviceIp = ip;
+                debugPrint("--- UPDATED $side IP: $ip ---");
+                notifyListeners();
+              }
+            });
           }
         }
       }
@@ -125,6 +192,7 @@ class BleService {
         }
       }
     }
+    _startRssiPolling();
   }
 
   Future<void> _setupNotifications(BluetoothCharacteristic characteristic, String side) async {
@@ -157,9 +225,13 @@ class BleService {
       case 0x03: message = "Long Press Start"; break;
       case 0x04: message = "Long Press End"; break;
       case 0x10: message = "Low Battery"; break;
-      case 0x11: message = "Thermal Warning"; break;
+      case 0x11: 
+        message = "Thermal Warning"; 
+        _thermalController.add({side: "HOT"});
+        break;
       default: message = "Event: $code";
     }
+    if (code != 0x11) _thermalController.add({side: "COOL"}); // Clear warning on other events
     _eventController.add({"side": side, "message": message, "code": code});
   }
 

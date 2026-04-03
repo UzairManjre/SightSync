@@ -6,11 +6,16 @@ import 'utils/theme.dart';
 import 'services/ble_service.dart';
 import 'services/auth_service.dart';
 import 'services/settings_service.dart';
+import 'services/ai_service.dart';
 import 'screens/auth/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize AI engine (sets TTS language/rate) before UI renders
+  await AiService().init();
+
   runApp(const SightSyncApp());
 }
 
@@ -21,7 +26,8 @@ class SightSyncApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<BleService>(create: (_) => BleService()),
+        ChangeNotifierProvider<BleService>(create: (_) => BleService()),
+        ChangeNotifierProvider<AiService>(create: (_) => AiService()),
         Provider<AuthService>(create: (_) => AuthService()),
         Provider<SettingsService>(create: (_) => SettingsService()),
       ],

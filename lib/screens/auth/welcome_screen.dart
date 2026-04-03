@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/theme.dart';
-import '../../utils/size_config.dart';
+import '../../widgets/ambient_background.dart';
 import 'login_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -8,168 +8,155 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. Background Gradient
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: SizeConfig.h(500),
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [AppColors.authGradientTop, Colors.black],
-                  stops: [0.0, 1.0],
-                ),
-              ),
-            ),
-          ),
-
-          // 2. Content
-          SafeArea(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: SizeConfig.w(40)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: SizeConfig.h(60)),
-
-                  // SS Logo
-                  Container(
-                    width: SizeConfig.w(70),
-                    height: SizeConfig.w(70),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        "SS",
-                        style: TextStyle(
-                          color: AppColors.authGradientTop,
-                          fontSize: SizeConfig.sp(38),
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -2,
-                        ),
-                      ),
-                    ),
+      body: AmbientBackground(
+        useImage: true,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 60),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 20),
+                
+                // --- SS Logo (Match Screenshot: White Circle) ---
+                Container(
+                  width: 90,
+                  height: 90,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
                   ),
-
-                  SizedBox(height: SizeConfig.h(40)),
-
-                  // Welcome Text
-                  Text(
-                    "Welcome to\nSightSync",
+                  child: const Text(
+                    'SS',
                     style: TextStyle(
-                      fontSize: SizeConfig.sp(50),
-                      height: 1.1,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: -1,
+                      color: Color(0xFF1E3A8A), // Dark blue from logo
+                      fontSize: 42,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -2,
+                      fontFamily: 'SpaceGrotesk',
                     ),
                   ),
+                ),
+                
+                const SizedBox(height: 48),
 
-                  const Spacer(),
-
-                  // "Let's Sync In ->"
-                  Row(
-                    children: [
-                      Text(
-                        "Let's Sync In",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: SizeConfig.sp(22),
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                      SizedBox(width: SizeConfig.w(8)),
-                      Icon(Icons.arrow_forward_rounded,
-                          color: Colors.white70, size: SizeConfig.sp(22)),
-                    ],
+                // --- Heading (Match Screenshot: Welcome to SightSync) ---
+                const Text(
+                  'Welcome to\nSightSync',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w800,
+                    height: 1.05,
+                    letterSpacing: -1.5,
+                    fontFamily: 'SpaceGrotesk',
                   ),
+                ),
+                
+                const Spacer(),
 
-                  SizedBox(height: SizeConfig.h(20)),
-
-                  // Buttons
-                  Wrap(
-                    spacing: SizeConfig.w(16),
-                    runSpacing: SizeConfig.h(12),
-                    children: [
-                      _buildAuthButton(
-                        context: context,
-                        text: "Login",
-                        onPressed: () => Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const LoginScreen(isLogin: true)),
-                        ),
+                // --- CTA Label (Match Screenshot: Let's Sync In ->) ---
+                Row(
+                  children: [
+                    Text(
+                      'Let’s Sync In',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
                       ),
-                      _buildAuthButton(
-                        context: context,
-                        text: "Create Account",
-                        onPressed: () => Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const LoginScreen(isLogin: false)),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(
+                      Icons.arrow_forward,
+                      color: Colors.white.withOpacity(0.9),
+                      size: 24,
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 32),
 
-                  SizedBox(height: SizeConfig.h(60)),
-                ],
-              ),
+                // --- Buttons (Match Screenshot: Side-by-Side Pill Buttons) ---
+                Row(
+                  children: [
+                    Expanded(
+                      child: _PillButton(
+                        label: 'Login',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginScreen()),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _PillButton(
+                        label: 'Signup',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LoginScreen(initialIsSignUp: true)),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 20),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildAuthButton({
-    required BuildContext context,
-    required String text,
-    required VoidCallback onPressed,
-  }) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(SizeConfig.w(30)),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.w(24),
-          vertical: SizeConfig.h(12),
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.authGradientTop.withOpacity(0.15),
-          border: Border.all(
-            color: AppColors.authGradientTop.withOpacity(0.4),
-            width: 1,
+class _PillButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+
+  const _PillButton({
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        color: const Color(0xFF0A1227).withOpacity(0.8), // Dark glassmorphic
+        border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
-          borderRadius: BorderRadius.circular(SizeConfig.w(30)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: SizeConfig.sp(14),
-            fontWeight: FontWeight.w400,
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'SpaceGrotesk',
           ),
         ),
+        child: Text(label),
       ),
     );
   }

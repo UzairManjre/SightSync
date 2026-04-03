@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../utils/theme.dart';
+import '../../widgets/ambient_background.dart';
 
 class ControlsScreen extends StatelessWidget {
   final bool isListening;
@@ -8,7 +9,7 @@ class ControlsScreen extends StatelessWidget {
   final String singlePressAction;
   final String doublePressAction;
   final String longPressAction;
-  final Function(String key, String value) onUpdateMapping;
+  final Future<void> Function(String key, String value) onUpdateMapping;
 
   const ControlsScreen({
     super.key,
@@ -21,173 +22,241 @@ class ControlsScreen extends StatelessWidget {
     required this.onUpdateMapping,
   });
 
-  static const Map<String, String> _actionLabels = {
-    'describe_scene': 'Describe Scene',
-    'read_text': 'Read Text (OCR)',
-    'navigation': 'Navigation',
-    'voice_assistant': 'Voice Assistant',
-    'off': 'Off',
-  };
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: AmbientBackground(
+        isPremium: true,
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.maybePop(context),
+                      icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.white),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'PROTOCOLS',
+                      style: TextStyle(
+                        color: Colors.white, fontSize: 24,
+                        fontWeight: FontWeight.w900, fontFamily: 'SpaceGrotesk',
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'CONFIGURE HARDWARE INPUTS AND AI VOICE NARRATION.',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              Expanded(
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  children: [
+                    // ── Button Mappings ─────────────────────
+                    const _SectionLabel(text: 'BUTTON MAPPING CONFIG'),
+                    const SizedBox(height: 16),
+                    if (isLoading)
+                      const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+                    else ...[
+                      _MappingTile(
+                        icon: Icons.touch_app_rounded,
+                        label: 'SINGLE PRESS',
+                        current: singlePressAction,
+                        onChanged: (v) => onUpdateMapping('single_press_action', v),
+                      ),
+                      const SizedBox(height: 12),
+                      _MappingTile(
+                        icon: Icons.ads_click_rounded,
+                        label: 'DOUBLE PRESS',
+                        current: doublePressAction,
+                        onChanged: (v) => onUpdateMapping('double_press_action', v),
+                      ),
+                      const SizedBox(height: 12),
+                      _MappingTile(
+                        icon: Icons.gesture_rounded,
+                        label: 'LONG PRESS',
+                        current: longPressAction,
+                        onChanged: (v) => onUpdateMapping('long_press_action', v),
+                      ),
+                    ],
+
+                    const SizedBox(height: 40),
+
+                    // ── Audio Settings ──────────────────────
+                    const _SectionLabel(text: 'AUDIO & HAPTIC FEEDBACK'),
+                    const SizedBox(height: 16),
+                    _SliderTile(label: 'VOICE VOLUME', value: 0.7, icon: Icons.volume_up_rounded),
+                    const SizedBox(height: 12),
+                    _SliderTile(label: 'NARRATION SPEED', value: 0.5, icon: Icons.speed_rounded),
+                    const SizedBox(height: 12),
+                    
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                      decoration: AppTheme.glassDecoration(opacity: 0.05, radius: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.record_voice_over_rounded, color: AppColors.primary, size: 20),
+                              const SizedBox(width: 16),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('AI VOICE MODEL',
+                                      style: TextStyle(color: AppColors.textTertiary, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                  Text('SAMANTHA PRO v2',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Icon(Icons.tune_rounded, color: AppColors.primary.withOpacity(0.5), size: 20),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 60),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+const _actionOptions = {
+  'describe_scene': 'Describe Scene',
+  'read_text':      'Read Text',
+  'identify_color': 'Identify Colour',
+  'off':            'Disabled',
+};
+
+class _MappingTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String current;
+  final ValueChanged<String> onChanged;
+  const _MappingTile({required this.icon, required this.label, required this.current, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white54),
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: AppTheme.glassDecoration(opacity: 0.05, radius: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const SizedBox(height: 20),
-
-          // Mic Toggle
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: onToggleListening,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isListening ? AppColors.success : Colors.white24,
-                    width: 2,
-                  ),
-                  color: isListening
-                      ? AppColors.success.withOpacity(0.2)
-                      : Colors.white.withOpacity(0.05),
-                  boxShadow: isListening
-                      ? [BoxShadow(color: AppColors.success.withOpacity(0.4), blurRadius: 15)]
-                      : [],
-                ),
-                child: Icon(
-                  isListening ? Icons.mic : Icons.graphic_eq,
-                  color: isListening ? AppColors.success : Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
+          Row(
+            children: [
+              Icon(icon, color: AppColors.primary, size: 20),
+              const SizedBox(width: 16),
+              Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5, fontFamily: 'SpaceGrotesk')),
+            ],
           ),
-
-          const SizedBox(height: 30),
-
-          const Text(
-            "Controls",
-            style: TextStyle(color: Colors.white54, fontSize: 16),
+          DropdownButton<String>(
+            value: current,
+            dropdownColor: AppColors.surface,
+            style: const TextStyle(color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w900, fontFamily: 'SpaceGrotesk'),
+            underline: const SizedBox(),
+            elevation: 16,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary, size: 22),
+            items: _actionOptions.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value.toUpperCase())))
+                .toList(),
+            onChanged: (v) { if (v != null) onChanged(v); },
           ),
-          const SizedBox(height: 4),
-          const Text(
-            "Button Mapping",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 34,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-
-          const SizedBox(height: 40),
-
-          // Single Press
-          _buildMappingCard(
-            icon: Icons.touch_app,
-            title: "Single Press",
-            currentValue: singlePressAction,
-            configKey: 'single_press_action',
-          ),
-
-          const SizedBox(height: 16),
-
-          // Double Press
-          _buildMappingCard(
-            icon: Icons.double_arrow,
-            title: "Double Press",
-            currentValue: doublePressAction,
-            configKey: 'double_press_action',
-          ),
-
-          const SizedBox(height: 16),
-
-          // Long Press
-          _buildMappingCard(
-            icon: Icons.pan_tool,
-            title: "Long Press",
-            currentValue: longPressAction,
-            configKey: 'long_press_action',
-          ),
-
-          const SizedBox(height: 120),
         ],
       ),
     );
   }
+}
 
-  Widget _buildMappingCard({
-    required IconData icon,
-    required String title,
-    required String currentValue,
-    required String configKey,
-  }) {
+class _SliderTile extends StatefulWidget {
+  final String label;
+  final double value;
+  final IconData icon;
+  const _SliderTile({required this.label, required this.value, required this.icon});
+
+  @override
+  State<_SliderTile> createState() => _SliderTileState();
+}
+
+class _SliderTileState extends State<_SliderTile> {
+  late double _v;
+  @override void initState() { super.initState(); _v = widget.value; }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A182E).withOpacity(0.6),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: AppColors.primaryBlue.withOpacity(0.15),
-          width: 1,
-        ),
-      ),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+      decoration: AppTheme.glassDecoration(opacity: 0.05, radius: 24),
+      child: Column(
         children: [
-          Icon(icon, color: Colors.white54, size: 22),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _actionLabels[currentValue] ?? currentValue,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(widget.icon, color: AppColors.primary, size: 18),
+                  const SizedBox(width: 16),
+                  Text(widget.label,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5, fontFamily: 'SpaceGrotesk')),
+                ],
+              ),
+              Text('${(_v * 100).round()}%',
+                  style: const TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'SpaceGrotesk')),
+            ],
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.arrow_drop_down, color: Colors.white54),
-            color: const Color(0xFF1E1E2E),
-            onSelected: (value) => onUpdateMapping(configKey, value),
-            itemBuilder: (_) => _actionLabels.entries
-                .map((e) => PopupMenuItem(
-                      value: e.key,
-                      child: Text(
-                        e.value,
-                        style: TextStyle(
-                          color: e.key == currentValue
-                              ? AppColors.primaryBlue
-                              : Colors.white,
-                        ),
-                      ),
-                    ))
-                .toList(),
+          const SizedBox(height: 12),
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 4,
+              activeTrackColor: AppColors.primary,
+              inactiveTrackColor: AppColors.primary.withOpacity(0.1),
+              thumbColor: Colors.white,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8, elevation: 4),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+            ),
+            child: Slider(value: _v, onChanged: (v) => setState(() => _v = v)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.textTertiary,
+        fontSize: 10,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 2.0,
+        fontFamily: 'SpaceGrotesk',
       ),
     );
   }

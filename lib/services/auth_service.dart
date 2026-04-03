@@ -5,6 +5,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   User? get firebaseUser => _auth.currentUser;
+  User? get currentUser => _auth.currentUser;
 
   // Stream for auth state changes (used in SplashScreen)
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -32,6 +33,8 @@ class AuthService {
       );
       // Set display name
       await cred.user?.updateDisplayName(fullName);
+      // Send verification email
+      await cred.user?.sendEmailVerification();
       await cred.user?.reload();
       return _mapFirebaseUser(_auth.currentUser!);
     } on FirebaseAuthException catch (e) {

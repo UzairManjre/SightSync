@@ -70,5 +70,12 @@
 	<string>SightSync needs Bluetooth to connect to your smart glasses and sync settings.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>SightSync needs Bluetooth to communicate with your smart glasses hardware.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

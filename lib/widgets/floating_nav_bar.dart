@@ -12,71 +12,104 @@ class FloatingNavBar extends StatelessWidget {
     required this.onTap,
   });
 
+  static const _items = [
+    (Icons.home_outlined,         Icons.home_rounded,         'Home'),
+    (Icons.filter_center_focus,   Icons.filter_center_focus, 'Vision'),
+    (Icons.book_outlined,         Icons.book_rounded,         'Guide'),
+    (Icons.settings_outlined,     Icons.settings_rounded,    'Settings'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      bottom: 34,
+      bottom: 28,
       left: 24,
       right: 24,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppRadius.card),
+        borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
-            height: 72,
+            height: 68,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
-              gradient: AppGradients.cardOverlay,
+              color: AppColors.surfaceContainer.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: AppColors.glassBorder, width: 1),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
-                _buildNavItem(1, Icons.sensors_outlined, Icons.sensors_rounded, 'Sync'),
-                _buildNavItem(2, Icons.history_edu_outlined, Icons.history_edu_rounded, 'Logs'),
-                _buildNavItem(3, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
-              ],
+              children: List.generate(_items.length, (i) => _NavItem(
+                index: i,
+                icon: _items[i].$1,
+                activeIcon: _items[i].$2,
+                label: _items[i].$3,
+                isActive: currentIndex == i,
+                onTap: onTap,
+              )),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label) {
-    final isActive = currentIndex == index;
+class _NavItem extends StatelessWidget {
+  final int index;
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool isActive;
+  final Function(int) onTap;
+
+  const _NavItem({
+    required this.index,
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => onTap(index),
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: isActive ? AppColors.primaryBlue.withOpacity(0.15) : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 72,
+        height: 68,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              width: 42,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.primary.withOpacity(0.18) : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Icon(
+                  isActive ? activeIcon : icon,
+                  color: isActive ? AppColors.primary : AppColors.textTertiary,
+                  size: 22,
+                ),
+              ),
             ),
-            child: Icon(
-              isActive ? activeIcon : icon,
-              color: isActive ? AppColors.primaryBlue : Colors.white24,
-              size: 24,
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? AppColors.primary : AppColors.textTertiary,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                fontFamily: 'SpaceGrotesk',
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.white : Colors.white24,
-              fontSize: 10,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
