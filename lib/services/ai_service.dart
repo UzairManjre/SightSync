@@ -1,25 +1,19 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ml_kit_service.dart';
 import 'vision_log_service.dart';
+import 'gemini_service.dart';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONFIGURATION KEYS
+// CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kPrefOllamaHost = 'ai_ollama_host';
-const String _kPrefGeminiKey   = 'ai_gemini_key';
-const String _kPrefAiMode      = 'ai_mode'; // 'auto', 'cloud', 'offline', 'local'
-const String _kDefaultHost     = '192.168.1.12';
-const int    _kOllamaPort      = 11434;
-const String _kOllamaModel      = 'qwen3-vl:2b';
-const String _kGeminiModel      = 'gemini-1.5-flash';
+const String _kPrefAiMode = 'ai_mode'; // 'cloud' | 'offline'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI RESULT
@@ -42,6 +36,12 @@ class AiResult {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI SERVICE — singleton
+//
+// Routing logic:
+//  • Text Reading  → ML Kit (local OCR — fastest, most accurate for text)
+//  • Scene / Currency / Face → Firebase Cloud Function (Gemini 1.5 Flash)
+//
+// The user NEVER needs an API key — the Gemini key lives encrypted in Firebase.
 // ─────────────────────────────────────────────────────────────────────────────
 class AiService extends ChangeNotifier {
   static final AiService _instance = AiService._internal();
@@ -50,26 +50,32 @@ class AiService extends ChangeNotifier {
 
   final FlutterTts _tts = FlutterTts();
   final MLKitService _mlKit = MLKitService();
-  
-  bool _isBusy       = false;
-  bool _speaking     = false;
-  String _ollamaHost = _kDefaultHost;
-  String _geminiKey  = '';
-  String _aiMode     = 'offline'; // Force offline by default
-  String _activeEngine = 'On-Device AI';
+
+  bool   _isBusy       = false;
+  bool   _speaking     = false;
+  String _aiMode       = 'cloud';
+  String _activeEngine = 'Gemini AI';
 
   bool   get isBusy       => _isBusy;
-  String get ollamaHost   => _ollamaHost;
-  String get geminiKey    => _geminiKey;
   String get aiMode       => _aiMode;
   String get activeEngine => _activeEngine;
 
-  // ── Startup ────────────────────────────────────────────────────────────────
+  // ── Startup ──────────────────────────────────────────────────────────────
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _ollamaHost = prefs.getString(_kPrefOllamaHost) ?? _kDefaultHost;
-    _geminiKey  = prefs.getString(_kPrefGeminiKey)   ?? '';
-    _aiMode     = prefs.getString(_kPrefAiMode)      ?? 'offline';
+    final stored = prefs.getString(_kPrefAiMode) ?? 'cloud';
+
+    // Only allow 'cloud' or 'offline'. Anything else (old values like 'auto',
+    // 'local') gets reset to 'cloud' so Gemini is used by default.
+    if (stored == 'cloud' || stored == 'offline') {
+      _aiMode = stored;
+    } else {
+      _aiMode = 'cloud';
+      await prefs.setString(_kPrefAiMode, 'cloud');
+      debugPrint('[AI] Reset invalid aiMode "$stored" -> cloud');
+    }
+
+    _activeEngine = _aiMode == 'cloud' ? 'Gemini AI' : 'On-Device AI';
 
     // TTS setup
     await _tts.setLanguage('en-US');
@@ -78,93 +84,53 @@ class AiService extends ChangeNotifier {
     await _tts.setPitch(1.0);
     _tts.setCompletionHandler(() => _speaking = false);
 
-    debugPrint('[AI] Initialized — Mode: $_aiMode — Ollama: $_ollamaHost');
+    debugPrint('[AI] Initialized — Mode: $_aiMode');
   }
 
   Future<void> setAiMode(String mode) async {
     _aiMode = mode;
+    _activeEngine = mode == 'cloud' ? 'Gemini AI' : 'On-Device AI';
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kPrefAiMode, mode);
     notifyListeners();
   }
 
-  Future<void> setGeminiKey(String key) async {
-    _geminiKey = key.trim();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPrefGeminiKey, _geminiKey);
-    notifyListeners();
-  }
-
-  /// Update the Ollama host at runtime and persist it.
-  Future<void> setOllamaHost(String host) async {
-    _ollamaHost = host.trim();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPrefOllamaHost, _ollamaHost);
-    notifyListeners();
-    debugPrint('[AI] Ollama host updated → $_ollamaHost');
-  }
-
-  /// Quick connectivity test — returns true if Ollama responds.
-  Future<bool> testConnection() async {
-    try {
-      final url = Uri.parse('http://$_ollamaHost:$_kOllamaPort/api/version');
-      final resp = await http.get(url).timeout(const Duration(seconds: 4));
-      return resp.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ── Core Ollama vision call ────────────────────────────────────────────────
-  Future<String> _callOllama({
-    required Uint8List imageBytes,
-    required String systemPrompt,
-    required String userPrompt,
-    int timeoutSeconds = 28,
-  }) async {
-    final url = Uri.parse('http://$_ollamaHost:$_kOllamaPort/api/chat');
-    final b64  = base64Encode(imageBytes);
-
-    final body = jsonEncode({
-      'model':  _kOllamaModel,
-      'think':  false,
-      'stream': false,
-      'messages': [
-        {'role': 'system', 'content': systemPrompt},
-        {'role': 'user', 'content': userPrompt, 'images': [b64]},
-      ],
-      'options': {
-        'temperature': 0.1,
-        'top_p': 0.8,
-        'repeat_penalty': 1.1,
-      },
-    });
-
-    final resp = await http
-        .post(url, headers: {'Content-Type': 'application/json'}, body: body)
-        .timeout(Duration(seconds: timeoutSeconds));
-
-    if (resp.statusCode != 200) throw Exception('Ollama error: ${resp.statusCode}');
-    final data = jsonDecode(resp.body);
-    return _strip(data['message']?['content'] ?? '');
-  }
-
-  String _strip(String raw) =>
-      raw.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '').trim();
-
-  // ── Frame capture from ESP32 /capture endpoint ─────────────────────────────
+  // ── Frame capture from ESP32 port 81 ─────────────────────────────────────
+  // Port 81 is the dedicated AI capture server — completely separate from the
+  // MJPEG live stream on port 80, so they never block each other.
   Future<Uint8List?> captureFrameFromGlasses(String deviceIp) async {
-    try {
-      final url  = Uri.parse('http://$deviceIp/capture');
-      final resp = await http.get(url).timeout(const Duration(seconds: 6));
-      if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
-        return resp.bodyBytes;
+    final url = Uri.parse('http://$deviceIp:81/capture');
+    debugPrint('[AI] Capturing from: $url');
+
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      try {
+        final resp = await http.get(url).timeout(const Duration(seconds: 5));
+        if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+          debugPrint('[AI] Captured ${resp.bodyBytes.length} bytes (attempt $attempt)');
+          return resp.bodyBytes;
+        } else {
+          debugPrint('[AI] Capture attempt $attempt failed. Status: ${resp.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('[AI] Capture HTTP error (attempt $attempt): $e');
       }
-    } catch (e) {
-      debugPrint('[AI] Frame capture failed: $e');
+
+      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 500));
     }
     return null;
   }
+
+  // ── Gemini 1.5 Flash via local Generative AI SDK ─────────────────────────
+  Future<String> _callGemini({
+    required Uint8List imageBytes,
+    required String featureType,
+  }) async {
+    return await GeminiService().analyzeImage(
+      imageBytes: imageBytes,
+      featureType: featureType,
+    );
+  }
+
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   Future<void> speak(String text) async {
@@ -178,25 +144,17 @@ class AiService extends ChangeNotifier {
     await _tts.stop();
   }
 
-  // ── FEATURES ──────────────────────────────────────────────────────────────
-  static const _systemBase =
-      'You are a concise assistive vision AI for a visually impaired person. '
-      'Respond ONLY with factual observations based on what you see. '
-      'Never speculate, invent detail, or add opinions. '
-      'Maximum 2 short sentences.';
-
+  // ── Public Feature Methods ────────────────────────────────────────────────
   Future<AiResult> describeScene({
     required Uint8List imageBytes,
     required VisionLogService logService,
   }) =>
       _run(
         featureName:  'Scene Description',
+        featureType:  'scene',
         imageBytes:   imageBytes,
         logService:   logService,
-        systemPrompt: _systemBase,
-        userPrompt:
-            'Describe what you can see. '
-            'Name any people, objects, text signs, or hazards.',
+        useGemini:    true,
       );
 
   Future<AiResult> readText({
@@ -205,12 +163,10 @@ class AiService extends ChangeNotifier {
   }) =>
       _run(
         featureName:  'Text Reading',
+        featureType:  'text',
         imageBytes:   imageBytes,
         logService:   logService,
-        systemPrompt: _systemBase,
-        userPrompt:
-            'Read and transcribe every word of visible text exactly. '
-            'If there is no text say: No text found.',
+        useGemini:    false, // Always use local ML Kit OCR — it's more accurate
       );
 
   Future<AiResult> detectCurrency({
@@ -219,13 +175,10 @@ class AiService extends ChangeNotifier {
   }) =>
       _run(
         featureName:  'Currency AI',
+        featureType:  'currency',
         imageBytes:   imageBytes,
         logService:   logService,
-        systemPrompt: _systemBase,
-        userPrompt:
-            'Identify any currency notes or coins. '
-            'State denomination and currency name. '
-            'If none visible say: No currency detected.',
+        useGemini:    true,
       );
 
   Future<AiResult> describeFace({
@@ -234,27 +187,24 @@ class AiService extends ChangeNotifier {
   }) =>
       _run(
         featureName:  'Face Match',
+        featureType:  'face',
         imageBytes:   imageBytes,
         logService:   logService,
-        systemPrompt: _systemBase,
-        userPrompt:
-            'Describe any person you can see: approximate age, gender, '
-            'and distinguishing features. '
-            'If no person is visible say: No person detected.',
+        useGemini:    true,
       );
 
-  // ── Smart Dispatcher ───────────────────────────────────────────────────────
+  // ── Core Dispatcher ───────────────────────────────────────────────────────
   Future<AiResult> _run({
     required String featureName,
+    required String featureType,
     required Uint8List imageBytes,
     required VisionLogService logService,
-    required String systemPrompt,
-    required String userPrompt,
+    required bool useGemini,
   }) async {
     if (_isBusy) {
       return const AiResult(
         featureName: 'Busy',
-        output: 'Processing another feature...',
+        output: 'Already processing. Please wait.',
         latencyMs: 0,
       );
     }
@@ -262,27 +212,28 @@ class AiService extends ChangeNotifier {
     _isBusy = true;
     notifyListeners();
 
-    final sw    = Stopwatch()..start();
-    String out  = '';
+    final sw   = Stopwatch()..start();
+    String out = '';
     String? err;
 
     try {
-      // 1. Determine Engine (Simplified for Zero-Config)
-      // We force 'offline' (On-Device) unless the user has explicitly set 'local' (Ollama)
-      
-      if (_aiMode == 'local') {
-        _activeEngine = 'Local Server';
-        out = await _callOllama(imageBytes: imageBytes, systemPrompt: systemPrompt, userPrompt: userPrompt);
+      if (useGemini && _aiMode == 'cloud') {
+        // ── Cloud path: Gemini 1.5 Flash via Firebase Function ──
+        _activeEngine = 'Gemini AI';
+        out = await _callGemini(imageBytes: imageBytes, featureType: featureType);
       } else {
-        // DEFAULT: Use the model inside the app (ML Kit)
+        // ── Local path: ML Kit on-device (offline fallback or text OCR) ──
         _activeEngine = 'On-Device AI';
         final tmpFile = await _saveTmp(imageBytes);
-        if (featureName.contains('Text')) {
-          out = await _mlKit.readText(tmpFile);
-        } else if (featureName.contains('Currency')) {
-          out = await _mlKit.detectCurrency(tmpFile);
-        } else {
-          out = await _mlKit.describeScene(tmpFile);
+        switch (featureType) {
+          case 'text':
+            out = await _mlKit.readText(tmpFile);
+            break;
+          case 'currency':
+            out = await _mlKit.detectCurrency(tmpFile);
+            break;
+          default:
+            out = await _mlKit.describeScene(tmpFile);
         }
       }
 
@@ -290,8 +241,10 @@ class AiService extends ChangeNotifier {
       await logService.addLog(featureName: featureName, aiOutput: out);
     } catch (e) {
       err = e.toString();
-      debugPrint('[AI] Error in $_activeEngine: $e');
-      await speak('Analysis failed. Check your settings.');
+      debugPrint('[AI] Error in $_activeEngine for $featureName: $e');
+      // Friendly error message that gets spoken aloud
+      final spoken = 'Sorry, analysis failed. Please check your connection and try again.';
+      await speak(spoken);
     } finally {
       sw.stop();
       _isBusy = false;
@@ -300,7 +253,7 @@ class AiService extends ChangeNotifier {
 
     return AiResult(
       featureName: featureName,
-      output:      err ?? out,
+      output:      err != null ? 'Analysis failed. Please try again.' : out,
       error:       err,
       latencyMs:   sw.elapsedMilliseconds,
     );
@@ -312,6 +265,4 @@ class AiService extends ChangeNotifier {
     await file.writeAsBytes(bytes);
     return file;
   }
-
-  String get _featureName => 'AiService'; // internal label
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/ai_service.dart';
+import '../../services/remote_config_service.dart';
 import '../../utils/theme.dart';
 import '../auth/splash_screen.dart';
 import '../../widgets/ambient_background.dart';
@@ -187,87 +188,16 @@ class SettingsScreen extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HYBRID AI CONFIGURATOR TILE
+// Now uses Firebase Remote Config — no manual API key entry needed.
 // ─────────────────────────────────────────────────────────────────────────────
-class _AiEngineConfigTile extends StatefulWidget {
+class _AiEngineConfigTile extends StatelessWidget {
   const _AiEngineConfigTile();
-
-  @override
-  State<_AiEngineConfigTile> createState() => _AiEngineConfigTileState();
-}
-
-class _AiEngineConfigTileState extends State<_AiEngineConfigTile> {
-
-  void _editGeminiKey() async {
-    final ai = context.read<AiService>();
-    final ctrl = TextEditingController(text: ai.geminiKey);
-
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Gemini API Key', style: AppTheme.h3Style),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Used for high-resolution cloud analysis. Get your key at aistudio.google.com',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: AppTheme.inputDecoration('Paste API Key here'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null) {
-      await ai.setGeminiKey(result);
-    }
-  }
-
-  void _editOllamaHost() async {
-    final ai = context.read<AiService>();
-    final ctrl = TextEditingController(text: ai.ollamaHost);
-
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Ollama Host', style: AppTheme.h3Style),
-        content: TextField(
-          controller: ctrl,
-          style: const TextStyle(color: Colors.white),
-          decoration: AppTheme.inputDecoration('e.g. 192.168.1.12'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
-        ],
-      ),
-    );
-
-    if (result != null) {
-      await ai.setOllamaHost(result);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final ai = context.watch<AiService>();
+    final remoteKey = RemoteConfigService().geminiApiKey;
+    final keySet = remoteKey.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -288,50 +218,104 @@ class _AiEngineConfigTileState extends State<_AiEngineConfigTile> {
                   ),
                 ),
               ),
-              _ModeBadge(mode: ai.aiMode),
+              _ModeBadge(mode: ai.activeEngine),
             ],
           ),
+
           const SizedBox(height: 24),
-          
+
           // MODE SELECTOR
           const _SubLabel(text: 'INTELLIGENCE MODE'),
           const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _ModeChip(label: 'AUTO', value: 'auto', current: ai.aiMode),
-                _ModeChip(label: 'CLOUD', value: 'cloud', current: ai.aiMode),
-                _ModeChip(label: 'OFFLINE', value: 'offline', current: ai.aiMode),
-                _ModeChip(label: 'LOCAL', value: 'local', current: ai.aiMode),
-              ],
-            ),
+          Row(
+            children: [
+              _ModeChip(label: 'CLOUD AI', value: 'cloud', current: ai.aiMode),
+              _ModeChip(label: 'ON-DEVICE', value: 'offline', current: ai.aiMode),
+            ],
           ),
-          
+
           const SizedBox(height: 24),
           const Divider(color: Colors.white10),
           const SizedBox(height: 16),
 
-          // GEMINI CONFIG (Always show for cloud/auto)
-          if (ai.aiMode == 'auto' || ai.aiMode == 'cloud') ...[
-            _ConfigRow(
-              label: 'GEMINI CLOUD',
-              value: ai.geminiKey.isEmpty ? 'NOT SET' : '••••••••••••',
-              icon: Icons.cloud_done_rounded,
-              onTap: _editGeminiKey,
-            ),
-            const SizedBox(height: 16),
-          ],
+          // REMOTE CONFIG STATUS (info only — user doesn't set this)
+          Row(
+            children: [
+              Icon(
+                keySet ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                size: 16,
+                color: keySet ? AppColors.success : AppColors.error,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'GEMINI AI ENGINE',
+                      style: TextStyle(
+                        color: Colors.white30, fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      keySet
+                          ? 'Connected via Firebase Remote Config'
+                          : 'Not configured — check Firebase Console',
+                      style: TextStyle(
+                        color: keySet ? Colors.white : AppColors.error,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (keySet ? AppColors.success : AppColors.error).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  keySet ? 'ACTIVE' : 'OFFLINE',
+                  style: TextStyle(
+                    color: keySet ? AppColors.success : AppColors.error,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
 
-          // OLLAMA CONFIG (Show for local)
-          if (ai.aiMode == 'local' || ai.aiMode == 'auto') ...[
-            _ConfigRow(
-              label: 'OLLAMA SERVER',
-              value: ai.ollamaHost,
-              icon: Icons.developer_board_rounded,
-              onTap: _editOllamaHost,
+          const SizedBox(height: 16),
+
+          // INFO BANNER
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withOpacity(0.12)),
             ),
-          ],
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline_rounded, size: 14, color: AppColors.primary),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Your AI key is managed securely by your admin — no setup required.',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

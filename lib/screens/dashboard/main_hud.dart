@@ -181,17 +181,18 @@ class _AiStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color color = AppColors.primary;
-    IconData icon = Icons.cloud_queue_rounded;
-    String label = ai.activeEngine;
+    final label = ai.activeEngine;
+    final isGemini = label == 'Gemini AI';
+    final isOffline = label == 'On-Device AI';
 
-    if (label == 'Offline AI') {
-      color = Colors.amber;
-      icon = Icons.bolt_rounded;
-    } else if (label == 'Ollama') {
-      color = AppColors.secondary;
-      icon = Icons.terminal_rounded;
-    }
+    final Color color = isGemini
+        ? AppColors.primary
+        : isOffline
+            ? Colors.amber
+            : AppColors.textTertiary;
+    final IconData icon = isGemini
+        ? Icons.auto_awesome_rounded
+        : Icons.bolt_rounded;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
